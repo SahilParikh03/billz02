@@ -5,7 +5,8 @@ A consumer-facing AI inference router that pays model providers per call over th
 the hood it routes each request to a provider, pays for it, and shows you every
 charge in a **live spend feed**.
 
-This repo is **Stage 0** (testnet v1) of the plan in [`../billz_prd.md`](../billz_prd.md).
+This repo implements **Stages 0–3** of the plan in [`../billz_prd.md`](../billz_prd.md)
+(mock-verified; live mainnet pieces pending — see [SETUP.md](./SETUP.md)).
 
 ## What works today
 
@@ -30,6 +31,15 @@ This repo is **Stage 0** (testnet v1) of the plan in [`../billz_prd.md`](../bill
 - **Live spend feed** at `GET /api/feed` (SSE) → the talk-to-it UI renders each
   charge: provider, model, USDC, tokens, latency, payment mode, settlement tx,
   and a running burn-vs-budget bar.
+- **Multi-provider + shared state (Stage 2)**: Venice + Hyperbolic + **Surplus
+  Intelligence** (flat $0.003306/call). Per-user daily budgets and a pluggable
+  shared store (in-memory default, Upstash-Redis adapter) so caps hold across
+  serverless instances. Wallet-provider abstraction (`key` | CDP server wallet).
+- **Learning loop (Stage 3)**: thumbs-up/down (`POST /api/feedback`) become learned
+  quality priors that bias routing toward what users prefer per task class — the
+  asset competitors can't copy. Forkable **policy modes** (frugal / balanced /
+  premium / uncensored), a quality-per-dollar **leaderboard** (`GET /api/leaderboard`),
+  and a `train` CLI that exports the preference dataset.
 
 ## Quick start (mock mode — no setup)
 
@@ -50,6 +60,7 @@ Open the app, chat, and watch the spend feed fill in with simulated charges.
 | `npm run build` / `npm start` | Production build / serve |
 | `npm test` | Unit + integration tests (Vitest, mock mode) |
 | `npm run eval` | Router-vs-baseline A/B cost benchmark |
+| `npm run train` | Aggregate `.billz/feedback.jsonl` → leaderboard + dataset export |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
 
@@ -64,40 +75,45 @@ src/
   lib/
     types.ts          ← the shared contract (ProviderAdapter, SpendEvent, …)
     config.ts         ← env → AppConfig (read at request time)
-    events.ts         ← in-process spend-event bus (Stage 0; Redis in Stage 2)
+    store.ts          ← pluggable async KV (in-memory | Upstash Redis)
+    events.ts         ← in-process spend-event bus
+    quality.ts        ← learned quality priors (feedback → win-rates)
+    feedback.ts       ← trace→context capture + submitFeedback + JSONL log
     ids.ts
   providers/
-    index.ts          ← registry: mock | (venice + hyperbolic)
+    index.ts          ← registry: mock | (venice + hyperbolic + surplus)
     mock.ts           ← offline simulated provider
     venice.ts         ← OpenAI-compatible, credit-balance
     hyperbolic.ts     ← per-call x402 USDC settlement
+    surplus.ts        ← flat-price x402 ($0.003306/call)
   policy/
     classify.ts       ← difficulty / task-class / output-length classifier
-    score.ts          ← tier + cost/quality scoring of candidates
-    select.ts         ← classify → strong/weak cascade → cheapest in tier
+    score.ts          ← tier + cost/quality scoring (blends learned quality)
+    modes.ts          ← forkable policy presets
+    select.ts         ← classify → policy → cascade → best in tier
   payment/
-    wallet.ts         ← viem/x402 Signer (live mode)
+    wallet.ts         ← x402 Signer; "key" | "cdp" (server wallet)
     facilitator.ts    ← facilitator URL + settlement-receipt decode
-    budget.ts         ← per-session spend cap
+    budget.ts         ← store-backed per-session + per-user caps
   pipeline/
     cache.ts          ← two-layer semantic cache (exact + embedding cosine)
     embed.ts          ← local zero-dependency embedder (MiniLM-swappable)
     execute.ts        ← cache → route → budget → stream → record → publish → failover
     log.ts            ← structured per-call log + JSONL replay
-  eval/
-    ab.test.ts        ← router vs always-strong A/B (cost-per-query)
+  eval/ab.test.ts     ← router vs always-strong A/B (cost-per-query)
   app/
     api/v1/chat/completions/route.ts   ← OpenAI-compatible entrypoint
-    api/feed/route.ts                  ← SSE spend feed
-    api/models/route.ts, api/health/route.ts
-    page.tsx + components/             ← talk-to-it UI + live spend feed
+    api/{feed,feedback,leaderboard,models,health}/route.ts
+    page.tsx + components/             ← talk-to-it UI, spend feed, thumbs
+scripts/train.mjs     ← offline: feedback.jsonl → leaderboard + dataset export
 ```
 
 ## Verified vs. not
 
-**Verified** (locally, mock mode): typecheck, lint, 109 tests, production build, an
-end-to-end smoke test of all four routes including the 402 budget cap, and an A/B
-benchmark showing ~71% cost reduction from the cascade + cache.
+**Verified** (locally, mock mode): typecheck, lint, **161 tests**, production build,
+HTTP smoke tests (the 402 budget cap; the trace→feedback→leaderboard loop), an A/B
+benchmark showing ~71% cost reduction (cascade + cache), and a unit proof that
+feedback shifts routing.
 
 **Not yet verifiable** (needs a funded wallet + live network — see SETUP.md):
 the Hyperbolic 402 settlement cycle, the live `getSigner` path, and Venice's
@@ -106,7 +122,8 @@ is stubbed as a TODO (Stage 0 uses an optional `VENICE_API_KEY` Bearer token).
 
 ## Roadmap
 
-**Stage 0 + Stage 1 are built.** Next: Stage 2 (mainnet — CDP facilitator, server
-wallets, Redis-backed cache/budget) → Stage 3 (train a RouteLLM-style router on
-your own thumbs-up/down data; swap the local embedder for MiniLM). Details in
-`../billz_prd.md`.
+**Stages 0–3 are built and mock-verified.** What remains is live mainnet hardening:
+real CDP-facilitator settlement, CDP/Cobo MPC server wallets, mainnet USDC, a real
+Redis store, CDP embedded (email) wallets, and swapping the local embedder for
+MiniLM — plus tuning the difficulty classifier (it currently rates most "explain…"
+prompts hard). See [SETUP.md](./SETUP.md). Details in `../billz_prd.md`.
