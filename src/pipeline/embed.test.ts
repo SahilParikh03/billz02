@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createLocalEmbedder, cosine } from "./embed";
+import { createLocalEmbedder, createMiniLmEmbedder, getEmbedder, cosine } from "./embed";
 
 const embedder = createLocalEmbedder(256);
 
@@ -69,3 +69,57 @@ describe("createLocalEmbedder", () => {
     expect(cosine([0, 0, 0], [0, 0, 0])).toBe(0);
   });
 });
+
+describe("getEmbedder — backend selection", () => {
+  it("defaults to the local backend when no embedder is configured", () => {
+    expect(getEmbedder().id).toBe("local-fnv1a-256d");
+    expect(getEmbedder({ embedder: undefined }).id).toBe("local-fnv1a-256d");
+    expect(getEmbedder({ embedder: "local" }).dim).toBe(256);
+  });
+
+  it("selects the MiniLM backend when embedder is 'minilm'", () => {
+    const e = getEmbedder({ embedder: "minilm" });
+    expect(e.id).toContain("minilm");
+    expect(e.dim).toBe(384);
+  });
+});
+
+describe("createMiniLmEmbedder — metadata (no model download)", () => {
+  // We don't invoke embed() here: that would download the ONNX model from the
+  // HF hub. We only assert the embedder's shape/identity, which is offline.
+  it("reports id and 384-d without loading the model", () => {
+    const e = createMiniLmEmbedder();
+    expect(e.id).toBe("minilm:Xenova/all-MiniLM-L6-v2");
+    expect(e.dim).toBe(384);
+    expect(typeof e.embed).toBe("function");
+  });
+
+  it("honors a custom model id", () => {
+    expect(createMiniLmEmbedder("Xenova/bge-small-en-v1.5").id).toBe(
+      "minilm:Xenova/bge-small-en-v1.5",
+    );
+  });
+});
+
+// Opt-in: downloads the ONNX model from the HF hub on first run. Enable with
+// BILLZ_TEST_MINILM=1 (and @huggingface/transformers installed). Skipped by
+// default so the suite stays offline and fast.
+describe.runIf(process.env.BILLZ_TEST_MINILM === "1")(
+  "MiniLM embedder — live (network)",
+  () => {
+    it(
+      "produces 384-d vectors with high near-dup / low unrelated cosine",
+      async () => {
+        const e = getEmbedder({ embedder: "minilm" });
+        const a = await e.embed("What is the capital of France?");
+        const b = await e.embed("What's the capital city of France?");
+        const c = await e.embed("Write a quicksort implementation in Rust.");
+        expect(a.length).toBe(384);
+        expect(e.dim).toBe(384);
+        expect(cosine(a, b)).toBeGreaterThan(0.8); // semantic near-duplicate
+        expect(cosine(a, c)).toBeLessThan(0.5); // unrelated topic
+      },
+      120_000,
+    );
+  },
+);

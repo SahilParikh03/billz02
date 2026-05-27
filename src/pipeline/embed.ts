@@ -9,29 +9,15 @@
  *  5. L2-normalize the vector so cosine similarity = dot product.
  *
  * The resulting embeddings are deterministic and offline — no network or
- * model download is required.
+ * model download is required. It is the default backend.
  *
- * UPGRADE PATH: A MiniLM backend (e.g. `@xenova/transformers`) can replace
- * this entire implementation by returning an object that satisfies the
- * `Embedder` interface:
- *
- *   import { pipeline } from "@xenova/transformers";
- *   const extractor = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2");
- *   export function createMiniLMEmbedder(): Embedder {
- *     return {
- *       id: "minilm-l6-v2",
- *       dim: 384,
- *       async embed(text: string): Promise<number[]> {
- *         const out = await extractor(text, { pooling: "mean", normalize: true });
- *         return Array.from(out.data as Float32Array);
- *       },
- *     };
- *   }
- *
- * No changes to cache.ts or any call-site are needed — just swap the factory.
+ * A higher-quality MiniLM backend ({@link createMiniLmEmbedder}) is selectable
+ * via `BILLZ_EMBEDDER=minilm`; {@link getEmbedder} dispatches on the cache
+ * config. Both satisfy the same {@link Embedder} interface, so cache.ts and
+ * every call-site are agnostic to which is active.
  */
 
-import type { Embedder } from "@/lib/types";
+import type { AppConfig, Embedder, EmbedderKind } from "@/lib/types";
 
 /**
  * FNV-1a 32-bit hash. Returns an unsigned 32-bit integer.
@@ -137,4 +123,76 @@ export function createLocalEmbedder(dim = 256): Embedder {
       return result;
     },
   };
+}
+
+// ── MiniLM backend (@huggingface/transformers) ────────────────────────────────
+
+/** Default sentence-embedding model: all-MiniLM-L6-v2, 384-dimensional. */
+const MINILM_MODEL = process.env.BILLZ_MINILM_MODEL || "Xenova/all-MiniLM-L6-v2";
+const MINILM_DIM = 384;
+
+// Minimal structural types for the lazily-imported transformers pipeline, so we
+// don't take a compile-time dependency on the optional package's types.
+type FeatureTensor = { data: Float32Array | number[] };
+type FeatureExtractor = (
+  text: string,
+  opts: { pooling: "mean"; normalize: boolean },
+) => Promise<FeatureTensor>;
+
+/**
+ * MiniLM sentence embedder via `@huggingface/transformers` (an optional
+ * dependency, auto-externalized by Next so it runs under native Node `require`).
+ *
+ * The feature-extraction pipeline is built lazily and memoized on first
+ * `embed()` — building it downloads the ONNX model on the first ever call
+ * (cached on disk thereafter), so the heavy package and the network fetch only
+ * happen when `BILLZ_EMBEDDER=minilm` is actually selected. Mean-pooled +
+ * L2-normalized output, so cosine() behaves identically to the local backend.
+ */
+export function createMiniLmEmbedder(model = MINILM_MODEL): Embedder {
+  let extractorPromise: Promise<FeatureExtractor> | null = null;
+
+  async function getExtractor(): Promise<FeatureExtractor> {
+    if (!extractorPromise) {
+      extractorPromise = (async () => {
+        let mod: { pipeline: (task: string, model: string) => Promise<unknown> };
+        try {
+          mod = (await import("@huggingface/transformers")) as typeof mod;
+        } catch {
+          throw new Error(
+            "embed: BILLZ_EMBEDDER=minilm requires @huggingface/transformers. " +
+              "Install it with `npm install @huggingface/transformers`, or set " +
+              "BILLZ_EMBEDDER=local to use the offline embedder.",
+          );
+        }
+        return (await mod.pipeline("feature-extraction", model)) as FeatureExtractor;
+      })();
+      // If building the pipeline fails, clear the memo so a later call can retry.
+      extractorPromise.catch(() => {
+        extractorPromise = null;
+      });
+    }
+    return extractorPromise;
+  }
+
+  return {
+    id: `minilm:${model}`,
+    dim: MINILM_DIM,
+    async embed(text: string): Promise<number[]> {
+      const extractor = await getExtractor();
+      const out = await extractor(text, { pooling: "mean", normalize: true });
+      return Array.from(out.data);
+    },
+  };
+}
+
+// ── Selection ──────────────────────────────────────────────────────────────
+
+/**
+ * Build the embedder for the given cache config. Defaults to the local
+ * backend; returns the MiniLM backend when `cache.embedder === "minilm"`.
+ */
+export function getEmbedder(cacheCfg?: Pick<AppConfig["cache"], "embedder">): Embedder {
+  const kind: EmbedderKind = cacheCfg?.embedder === "minilm" ? "minilm" : "local";
+  return kind === "minilm" ? createMiniLmEmbedder() : createLocalEmbedder(256);
 }

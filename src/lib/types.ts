@@ -226,13 +226,22 @@ export interface ScoredCandidate extends Candidate {
 
 /**
  * Pluggable text embedder. The default is a zero-dependency local embedder; a
- * MiniLM (`@xenova/transformers`) backend can be swapped in behind this interface.
+ * MiniLM (`@huggingface/transformers`) backend can be swapped in behind this
+ * interface via {@link EmbedderKind}.
  */
 export interface Embedder {
   readonly id: string;
   readonly dim: number;
   embed(text: string): Promise<number[]>;
 }
+
+/**
+ * Which embedding backend the semantic cache uses.
+ * - `local`  zero-dependency FNV-1a hashing embedder (offline, default).
+ * - `minilm` all-MiniLM-L6-v2 via @huggingface/transformers (384-d, downloads
+ *            the model on first use; the package is an optional dependency).
+ */
+export type EmbedderKind = "local" | "minilm";
 
 export type CacheKind = "exact" | "semantic";
 
@@ -283,5 +292,7 @@ export interface AppConfig {
     simThreshold: number;
     ttlMs: number;
     maxEntries: number;
+    /** Embedding backend for the semantic layer; defaults to "local". */
+    embedder?: EmbedderKind;
   };
 }

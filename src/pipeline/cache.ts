@@ -28,7 +28,7 @@ import type {
   SemanticCache,
 } from "@/lib/types";
 import { getStore, isSharedStore, type Store } from "@/lib/store";
-import { createLocalEmbedder, cosine } from "./embed";
+import { getEmbedder, cosine } from "./embed";
 
 // ── Canonical conversation string ────────────────────────────────────────────
 
@@ -78,7 +78,7 @@ interface CacheEntry {
 
 class TwoLayerCache implements SemanticCache {
   private readonly entries = new Map<string, CacheEntry>();
-  private readonly embedder = createLocalEmbedder(256);
+  private readonly embedder: ReturnType<typeof getEmbedder>;
   private _hits = 0;
   private _misses = 0;
   /** Shared backend for the cross-instance exact layer; null = pure in-memory. */
@@ -86,6 +86,7 @@ class TwoLayerCache implements SemanticCache {
 
   constructor(private readonly cfg: AppConfig["cache"], store?: Store) {
     this.sharedStore = store ?? null;
+    this.embedder = getEmbedder(cfg); // local (default) or minilm per config
   }
 
   private storeKey(key: string): string {

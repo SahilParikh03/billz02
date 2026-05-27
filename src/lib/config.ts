@@ -51,6 +51,7 @@ export function getConfig(): AppConfig {
       simThreshold: num(process.env.BILLZ_CACHE_SIM_THRESHOLD, 0.83),
       ttlMs: num(process.env.BILLZ_CACHE_TTL_MS, 24 * 60 * 60 * 1000),
       maxEntries: num(process.env.BILLZ_CACHE_MAX_ENTRIES, 500),
+      embedder: process.env.BILLZ_EMBEDDER === "minilm" ? "minilm" : "local",
     },
   };
 }
