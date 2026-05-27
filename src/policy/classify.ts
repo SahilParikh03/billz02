@@ -10,8 +10,9 @@
  * 2. Run regex / keyword passes to produce named numeric features (all 0..1 or
  *    small positive integers — kept as named constants so they're tunable).
  * 3. Classify taskClass: code > reasoning > creative > chat, in priority order.
- * 4. Score difficulty as a weighted sum of features, then squash through a
- *    logistic function so the output is always in (0,1).
+ * 4. Score difficulty as a weighted sum of features — including a taskClass
+ *    contribution, since code/reasoning are inherently harder than chat — then
+ *    squash through a logistic so the output is always in (0,1).
  * 5. Estimate expectedOutTokens from taskClass + depth signals.
  * 6. Return signals map for transparency / downstream learning.
  */
@@ -43,10 +44,31 @@ const W_TECHVOCAB = 0.10;
 /** Weight on conversation depth (number of prior turns, normalized). */
 const W_CONVDEPTH = 0.08;
 
-/** Logistic steepness: controls how sharply the difficulty curve rises. */
-const LOGISTIC_K = 5.0;
+/**
+ * Weight on the task class itself. Code/reasoning prompts are intrinsically
+ * harder than chat regardless of length, so the class contributes directly —
+ * otherwise a terse "prove √2 is irrational" scores as easy as a greeting.
+ */
+const W_TASKCLASS = 0.25;
+/** Per-class intrinsic difficulty (0..1), scaled by W_TASKCLASS. */
+const TASKCLASS_DIFFICULTY: Record<QueryClass, number> = {
+  code: 1.0,
+  reasoning: 1.0,
+  creative: 0.4,
+  chat: 0.0,
+};
+
+/**
+ * Logistic steepness: controls how sharply the difficulty curve rises.
+ * Tuned (with X0) so simple chat lands ~0.22, medium reasoning ~0.5, and hard
+ * code/multi-step prompts clear the frugal strong-tier threshold (0.75).
+ */
+const LOGISTIC_K = 4.8;
 /** Logistic midpoint: raw weighted sum at which difficulty ≈ 0.5. */
-const LOGISTIC_X0 = 0.20;
+const LOGISTIC_X0 = 0.365;
+
+/** Trivial inputs (greetings, yes/no, short factual lookups) cap out here. */
+const TRIVIAL_CEILING = 0.18;
 
 // ── Token-estimate anchors ────────────────────────────────────────────────────
 
@@ -176,6 +198,9 @@ export function classify(messages: ChatMessage[]): Classification {
 
   // ── 4. Difficulty score ───────────────────────────────────────────────────
 
+  // f_taskclass: intrinsic difficulty of the task class (0..1)
+  const f_taskclass = TASKCLASS_DIFFICULTY[taskClass];
+
   const rawSum =
     W_LENGTH    * f_length    +
     W_CODE      * f_code      +
@@ -183,17 +208,23 @@ export function classify(messages: ChatMessage[]): Classification {
     W_MULTISTEP * f_multistep +
     W_DEPTH     * f_depth     +
     W_TECHVOCAB * f_techvocab +
-    W_CONVDEPTH * f_convdepth;
+    W_CONVDEPTH * f_convdepth +
+    W_TASKCLASS * f_taskclass;
 
-  // Apply floor for trivial inputs (greetings, yes/no) before logistic
+  // Apply ceiling for trivial inputs (greetings, yes/no) after logistic.
+  // A short chat turn is only "trivial" early on — mid-conversation it may be a
+  // terse follow-up to a deep thread, so don't cap once the dialogue has depth.
   const isYesNo = RE_YESNO.test(text.trim());
   const isShortFactual = RE_SHORT_FACTUAL.test(text.trim());
-  const isTrivial = isYesNo || isShortFactual || (text.trim().length < 30 && taskClass === "chat");
+  const isTrivial =
+    isYesNo ||
+    isShortFactual ||
+    (text.trim().length < 30 && taskClass === "chat" && convTurns <= 2);
 
   let difficulty = logistic(rawSum, LOGISTIC_K, LOGISTIC_X0);
 
   // Clamp trivial answers toward the low end without a hard floor
-  if (isTrivial) difficulty = Math.min(difficulty, 0.22);
+  if (isTrivial) difficulty = Math.min(difficulty, TRIVIAL_CEILING);
 
   // ── 5. Expected output tokens ─────────────────────────────────────────────
 
@@ -234,6 +265,7 @@ export function classify(messages: ChatMessage[]): Classification {
     f_depth,
     f_techvocab,
     f_convdepth,
+    f_taskclass,
     rawSum,
     isTrivial: isTrivial ? 1 : 0,
   };
