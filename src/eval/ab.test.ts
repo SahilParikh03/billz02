@@ -3,7 +3,7 @@ import type { AppConfig, SpendEvent } from "@/lib/types";
 import { executeChat } from "@/pipeline/execute";
 import { createMockAdapter } from "@/providers/mock";
 import { subscribeSpend } from "@/lib/events";
-import { resetSession } from "@/payment/budget";
+import { resetStore } from "@/lib/store";
 import { resetCache } from "@/pipeline/cache";
 
 /**
@@ -85,7 +85,7 @@ beforeAll(async () => {
 
   // ── Router: classify → cascade → cache ──
   resetCache();
-  resetSession("ab");
+  resetStore();
   const events: SpendEvent[] = [];
   const unsub = subscribeSpend((e) => events.push(e));
   for (const content of PROMPTS) {

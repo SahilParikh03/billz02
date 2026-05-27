@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { executeChat } from "./execute";
 import { getConfig } from "@/lib/config";
 import { subscribeSpend } from "@/lib/events";
-import { getBudgetStatus, recordSpend, resetSession } from "@/payment/budget";
+import { getBudgetStatus, recordSpend } from "@/payment/budget";
+import { resetStore } from "@/lib/store";
 import { resetCache } from "@/pipeline/cache";
 import type { SpendEvent, StreamEvent } from "@/lib/types";
 
@@ -20,13 +21,10 @@ async function collect(
 describe("executeChat — mock mode (default config)", () => {
   const sid1 = "exec-test-1";
   const sid2 = "exec-test-2";
-  const sid3 = "exec-test-budget";
 
   beforeEach(() => {
-    resetCache(); // isolate the semantic cache between cases (repeat prompts would hit)
-    resetSession(sid1);
-    resetSession(sid2);
-    resetSession(sid3);
+    resetCache(); // isolate the semantic cache (a repeat prompt would otherwise hit)
+    resetStore(); // isolate the budget store
   });
 
   it("yields at least one delta event", async () => {
@@ -35,8 +33,7 @@ describe("executeChat — mock mode (default config)", () => {
       { messages: [{ role: "user", content: "hi" }] },
       { sessionId: sid1, traceId: "t1" },
     );
-    const deltas = events.filter((e) => e.type === "delta");
-    expect(deltas.length).toBeGreaterThan(0);
+    expect(events.filter((e) => e.type === "delta").length).toBeGreaterThan(0);
   });
 
   it("yields a done event with provider 'mock' and positive usdcCharged", async () => {
@@ -47,9 +44,7 @@ describe("executeChat — mock mode (default config)", () => {
     );
     const doneEvents = events.filter((e) => e.type === "done");
     expect(doneEvents.length).toBe(1);
-
     const done = doneEvents[0];
-    expect(done.type).toBe("done");
     if (done.type === "done") {
       expect(done.result.provider).toBe("mock");
       expect(done.result.usdcCharged).toBeGreaterThan(0);
@@ -76,15 +71,13 @@ describe("executeChat — mock mode (default config)", () => {
   });
 
   it("increases the session's spent amount after a successful call", async () => {
-    const before = getBudgetStatus(sid1).spent;
-
+    const before = (await getBudgetStatus(sid1)).spent;
     await collect(
       getConfig(),
       { messages: [{ role: "user", content: "test" }] },
       { sessionId: sid1, traceId: "t3" },
     );
-
-    const after = getBudgetStatus(sid1).spent;
+    const after = (await getBudgetStatus(sid1)).spent;
     expect(after).toBeGreaterThan(before);
   });
 
@@ -110,13 +103,12 @@ describe("executeChat — budget exhaustion", () => {
 
   beforeEach(() => {
     resetCache();
-    resetSession(exhaustedSid);
+    resetStore();
   });
 
   it("yields a budget error and does not stream when session is exhausted", async () => {
-    // Exhaust the budget first.
-    recordSpend(exhaustedSid, 5);
-    expect(getBudgetStatus(exhaustedSid).exceeded).toBe(true);
+    await recordSpend(exhaustedSid, 5);
+    expect((await getBudgetStatus(exhaustedSid)).exceeded).toBe(true);
 
     const events = await collect(
       getConfig(),
@@ -132,8 +124,8 @@ describe("executeChat — budget exhaustion", () => {
   });
 
   it("does NOT increase spent when budget is exceeded", async () => {
-    recordSpend(exhaustedSid, 5);
-    const before = getBudgetStatus(exhaustedSid).spent;
+    await recordSpend(exhaustedSid, 5);
+    const before = (await getBudgetStatus(exhaustedSid)).spent;
 
     await collect(
       getConfig(),
@@ -141,12 +133,12 @@ describe("executeChat — budget exhaustion", () => {
       { sessionId: exhaustedSid, traceId: "budget-trace-2" },
     );
 
-    const after = getBudgetStatus(exhaustedSid).spent;
-    expect(after).toBe(before); // no additional charge
+    const after = (await getBudgetStatus(exhaustedSid)).spent;
+    expect(after).toBe(before);
   });
 
   it("does NOT publish a SpendEvent when budget is exceeded", async () => {
-    recordSpend(exhaustedSid, 5);
+    await recordSpend(exhaustedSid, 5);
 
     const received: SpendEvent[] = [];
     const unsub = subscribeSpend((e) => received.push(e));
@@ -158,7 +150,6 @@ describe("executeChat — budget exhaustion", () => {
     );
 
     unsub();
-    const relevantEvents = received.filter((e) => e.sessionId === exhaustedSid);
-    expect(relevantEvents.length).toBe(0);
+    expect(received.filter((e) => e.sessionId === exhaustedSid).length).toBe(0);
   });
 });

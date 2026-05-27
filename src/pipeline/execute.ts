@@ -20,6 +20,8 @@ interface ExecOpts {
   sessionId: string;
   traceId: string;
   signal?: AbortSignal;
+  /** User identity for per-user daily caps; defaults to sessionId. */
+  userId?: string;
 }
 
 /**
@@ -35,7 +37,7 @@ export async function* executeChat(
   req: ChatCompletionRequest,
   opts: ExecOpts,
 ): AsyncGenerator<StreamEvent, void, unknown> {
-  const { sessionId, traceId, signal } = opts;
+  const { sessionId, traceId, signal, userId = sessionId } = opts;
 
   // ── 0. Cache lookup ───────────────────────────────────────────────────────────
   const cache = cfg.cache.enabled ? getCache(cfg) : null;
@@ -51,8 +53,8 @@ export async function* executeChat(
   const decision = route(cfg, req);
 
   // ── 2. Budget pre-check ───────────────────────────────────────────────────────
-  const initialStatus = getBudgetStatus(sessionId);
-  if (initialStatus.exceeded || !canSpend(sessionId, UPFRONT_ESTIMATE_USD)) {
+  const initialStatus = await getBudgetStatus(sessionId);
+  if (initialStatus.exceeded || !(await canSpend(sessionId, UPFRONT_ESTIMATE_USD, userId))) {
     yield { type: "error", error: "session budget exceeded" };
     return;
   }
@@ -92,7 +94,7 @@ export async function* executeChat(
           const latencyMs = Date.now() - start;
           const result = event.result;
 
-          const status = recordSpend(sessionId, result.usdcCharged);
+          const status = await recordSpend(sessionId, result.usdcCharged, userId);
 
           const spendEvent: SpendEvent = {
             ts: Date.now(),
@@ -157,7 +159,7 @@ async function* serveFromCache(
   };
 
   // A cache hit costs nothing, so the budget is unchanged — just report status.
-  const status = getBudgetStatus(sessionId);
+  const status = await getBudgetStatus(sessionId);
   const spendEvent: SpendEvent = {
     ts: Date.now(),
     traceId,

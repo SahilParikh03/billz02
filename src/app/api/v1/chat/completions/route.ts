@@ -39,6 +39,7 @@ export async function POST(request: Request): Promise<Response> {
     body.session_id ||
     request.headers.get("x-billz-session") ||
     newId("sess");
+  const userId = request.headers.get("x-billz-user") || sessionId;
   const traceId = newId("trace");
   const requestId = newId("chatcmpl");
   const created = Math.floor(Date.now() / 1000);
@@ -52,6 +53,7 @@ export async function POST(request: Request): Promise<Response> {
 
     for await (const event of executeChat(cfg, body, {
       sessionId,
+      userId,
       traceId,
       signal: request.signal,
     })) {
@@ -107,6 +109,7 @@ export async function POST(request: Request): Promise<Response> {
   // response (once we return 200 + stream, we cannot change the status code).
   const it = executeChat(cfg, body, {
     sessionId,
+    userId,
     traceId,
     signal: request.signal,
   })[Symbol.asyncIterator]();

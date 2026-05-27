@@ -11,7 +11,7 @@ import type { Hex } from "viem";
 
 // ── Providers ───────────────────────────────────────────────────────────────
 
-export type ProviderId = "venice" | "hyperbolic" | "mock";
+export type ProviderId = "venice" | "hyperbolic" | "surplus" | "mock";
 
 /**
  * How a given call was paid for.
@@ -226,6 +226,8 @@ export type ProviderMode = "live" | "mock";
 export interface AppConfig {
   providerMode: ProviderMode;
   sessionBudgetUsd: number;
+  /** Per-user daily cap in USD; 0 (default) disables the per-user limit. */
+  userDailyBudgetUsd?: number;
   maxPaymentPerCallUsd: number;
   network: string; // "base-sepolia" | "base"
   facilitatorUrl: string;

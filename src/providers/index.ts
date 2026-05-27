@@ -2,15 +2,18 @@ import type { AppConfig, ModelInfo, ProviderAdapter, ProviderId } from "@/lib/ty
 import { createMockAdapter } from "./mock";
 import { createVeniceAdapter } from "./venice";
 import { createHyperbolicAdapter } from "./hyperbolic";
+import { createSurplusAdapter } from "./surplus";
 
 /**
  * Build the active provider set for the current config.
  * - mock mode → just the offline mock provider.
- * - live mode → Venice + Hyperbolic (Stage 0 pair).
+ * - live mode → Venice + Hyperbolic + Surplus Intelligence (Stage 2 triple).
+ *   Surplus is Base-mainnet only (flat $0.003306/call); failover across providers
+ *   is handled by the router policy layer, not here.
  */
 export function getProviders(cfg: AppConfig): ProviderAdapter[] {
   if (cfg.providerMode === "mock") return [createMockAdapter(cfg)];
-  return [createVeniceAdapter(cfg), createHyperbolicAdapter(cfg)];
+  return [createVeniceAdapter(cfg), createHyperbolicAdapter(cfg), createSurplusAdapter(cfg)];
 }
 
 export function getProvider(
