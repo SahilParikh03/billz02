@@ -9,18 +9,19 @@ import {
 } from "react";
 import { ChatMessage } from "./useChat";
 import { ModelOption } from "./useModels";
+import type { LeaderboardRow } from "@/lib/types";
 
 interface ChatPanelProps {
   messages: ChatMessage[];
   isStreaming: boolean;
   onSend: (content: string) => void;
+  onFeedback: (traceId: string, rating: "up" | "down") => Promise<void>;
   models: ModelOption[];
   selectedModel: string;
   onModelChange: (model: string) => void;
 }
 
 function ProviderDot({ model }: { model: string }) {
-  // Color-code by provider hint embedded in model string
   const bg = model.includes("venice")
     ? "bg-violet-500"
     : model.includes("hyperbolic")
@@ -31,9 +32,83 @@ function ProviderDot({ model }: { model: string }) {
   return <span className={`inline-block w-2 h-2 rounded-full ${bg} mr-1.5 shrink-0`} />;
 }
 
-function MessageBubble({ msg }: { msg: ChatMessage }) {
+// ── Feedback thumbs ────────────────────────────────────────────────────────────
+
+type FeedbackState = "up" | "down" | null;
+
+function ThumbButtons({
+  traceId,
+  onFeedback,
+}: {
+  traceId: string;
+  onFeedback: (traceId: string, rating: "up" | "down") => Promise<void>;
+}) {
+  const [voted, setVoted] = useState<FeedbackState>(null);
+  const [busy, setBusy] = useState(false);
+
+  const vote = useCallback(
+    async (rating: "up" | "down") => {
+      if (voted !== null || busy) return;
+      setBusy(true);
+      try {
+        await onFeedback(traceId, rating);
+        setVoted(rating);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [traceId, onFeedback, voted, busy],
+  );
+
+  const baseBtn =
+    "w-6 h-6 rounded flex items-center justify-center text-sm transition-colors disabled:cursor-not-allowed";
+
+  return (
+    <div className="flex gap-1 mt-1.5" aria-label="Rate this response">
+      <button
+        onClick={() => vote("up")}
+        disabled={voted !== null || busy}
+        title="Helpful"
+        className={`${baseBtn} ${
+          voted === "up"
+            ? "bg-emerald-600/30 text-emerald-400"
+            : voted === "down"
+            ? "text-zinc-600"
+            : "text-zinc-500 hover:text-emerald-400 hover:bg-emerald-600/20"
+        }`}
+      >
+        👍
+      </button>
+      <button
+        onClick={() => vote("down")}
+        disabled={voted !== null || busy}
+        title="Not helpful"
+        className={`${baseBtn} ${
+          voted === "down"
+            ? "bg-red-600/30 text-red-400"
+            : voted === "up"
+            ? "text-zinc-600"
+            : "text-zinc-500 hover:text-red-400 hover:bg-red-600/20"
+        }`}
+      >
+        👎
+      </button>
+    </div>
+  );
+}
+
+// ── Message bubble ─────────────────────────────────────────────────────────────
+
+function MessageBubble({
+  msg,
+  onFeedback,
+}: {
+  msg: ChatMessage;
+  onFeedback: (traceId: string, rating: "up" | "down") => Promise<void>;
+}) {
   const isUser = msg.role === "user";
   const isError = msg.budgetExceeded;
+  const showThumbs = !isUser && msg.done && !isError && msg.traceId;
 
   if (isUser) {
     return (
@@ -51,25 +126,30 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center shrink-0 mt-0.5">
           <span className="text-white text-xs font-bold">B</span>
         </div>
-        <div
-          className={`rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${
-            isError
-              ? "bg-red-950/50 border border-red-800/50 text-red-300"
-              : "bg-zinc-800 text-zinc-100"
-          }`}
-        >
-          {msg.content || (
-            <span className="flex gap-1 items-center text-zinc-500 py-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce [animation-delay:-0.3s]" />
-              <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce [animation-delay:-0.15s]" />
-              <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce" />
-            </span>
-          )}
-          {!msg.done && msg.content && (
-            <span className="inline-block w-0.5 h-4 bg-violet-400 ml-0.5 animate-pulse align-middle" />
-          )}
-          {isError && (
-            <div className="mt-1.5 text-xs text-red-400 font-medium">Budget exceeded</div>
+        <div>
+          <div
+            className={`rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${
+              isError
+                ? "bg-red-950/50 border border-red-800/50 text-red-300"
+                : "bg-zinc-800 text-zinc-100"
+            }`}
+          >
+            {msg.content || (
+              <span className="flex gap-1 items-center text-zinc-500 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce [animation-delay:-0.3s]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce [animation-delay:-0.15s]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce" />
+              </span>
+            )}
+            {!msg.done && msg.content && (
+              <span className="inline-block w-0.5 h-4 bg-violet-400 ml-0.5 animate-pulse align-middle" />
+            )}
+            {isError && (
+              <div className="mt-1.5 text-xs text-red-400 font-medium">Budget exceeded</div>
+            )}
+          </div>
+          {showThumbs && (
+            <ThumbButtons traceId={msg.traceId!} onFeedback={onFeedback} />
           )}
         </div>
       </div>
@@ -77,15 +157,104 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
   );
 }
 
+// ── Leaderboard panel ──────────────────────────────────────────────────────────
+
+function LeaderboardPanel({ onClose }: { onClose: () => void }) {
+  const [rows, setRows] = useState<LeaderboardRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/leaderboard")
+      .then((r) => r.json())
+      .then((data: LeaderboardRow[]) => {
+        setRows(data);
+        setLoading(false);
+      })
+      .catch(() => {
+        setError("Failed to load leaderboard");
+        setLoading(false);
+      });
+  }, []);
+
+  return (
+    <div className="absolute bottom-full left-0 right-0 mb-2 z-10 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800">
+        <span className="text-xs font-semibold text-zinc-300 tracking-wide uppercase">
+          Quality Leaderboard
+        </span>
+        <button
+          onClick={onClose}
+          className="text-zinc-500 hover:text-zinc-300 transition-colors"
+          aria-label="Close leaderboard"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M11 3L3 11M3 3l8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+
+      <div className="max-h-48 overflow-y-auto">
+        {loading && (
+          <p className="text-xs text-zinc-500 px-3 py-4 text-center">Loading…</p>
+        )}
+        {error && (
+          <p className="text-xs text-red-400 px-3 py-4 text-center">{error}</p>
+        )}
+        {!loading && !error && rows.length === 0 && (
+          <p className="text-xs text-zinc-500 px-3 py-4 text-center">
+            No votes yet — chat and rate responses first.
+          </p>
+        )}
+        {!loading && !error && rows.length > 0 && (
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-zinc-500 border-b border-zinc-800">
+                <th className="text-left px-3 py-1.5 font-medium">Model</th>
+                <th className="text-left px-2 py-1.5 font-medium">Task</th>
+                <th className="text-right px-2 py-1.5 font-medium">Win%</th>
+                <th className="text-right px-3 py-1.5 font-medium">Q/$</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.slice(0, 8).map((row, i) => (
+                <tr
+                  key={`${row.taskClass}-${row.provider}-${row.model}`}
+                  className={`${i % 2 === 0 ? "bg-zinc-900" : "bg-zinc-900/50"} hover:bg-zinc-800/50 transition-colors`}
+                >
+                  <td className="px-3 py-1.5 text-zinc-300 font-mono truncate max-w-[120px]">
+                    {row.model}
+                  </td>
+                  <td className="px-2 py-1.5 text-zinc-400">{row.taskClass}</td>
+                  <td className="text-right px-2 py-1.5 text-zinc-300">
+                    {(row.winRate * 100).toFixed(0)}%
+                  </td>
+                  <td className="text-right px-3 py-1.5 text-violet-300 font-mono">
+                    {row.qualityPerDollar > 0 ? row.qualityPerDollar.toFixed(1) : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main panel ─────────────────────────────────────────────────────────────────
+
 export function ChatPanel({
   messages,
   isStreaming,
   onSend,
+  onFeedback,
   models,
   selectedModel,
   onModelChange,
 }: ChatPanelProps) {
   const [input, setInput] = useState("");
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -98,7 +267,6 @@ export function ChatPanel({
     if (!input.trim() || isStreaming) return;
     onSend(input.trim());
     setInput("");
-    // Reset textarea height
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -111,7 +279,7 @@ export function ChatPanel({
         handleSend();
       }
     },
-    [handleSend]
+    [handleSend],
   );
 
   const handleInput = useCallback(() => {
@@ -153,29 +321,49 @@ export function ChatPanel({
             </div>
           </div>
         ) : (
-          messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)
+          messages.map((msg) => (
+            <MessageBubble key={msg.id} msg={msg} onFeedback={onFeedback} />
+          ))
         )}
         <div ref={bottomRef} />
       </div>
 
       {/* Input area */}
-      <div className="border-t border-zinc-800 bg-zinc-950/50 px-4 py-3">
-        {/* Model picker */}
+      <div className="relative border-t border-zinc-800 bg-zinc-950/50 px-4 py-3">
+        {/* Leaderboard flyout */}
+        {showLeaderboard && (
+          <LeaderboardPanel onClose={() => setShowLeaderboard(false)} />
+        )}
+
+        {/* Model picker + leaderboard toggle */}
         {models.length > 0 && (
-          <div className="flex items-center gap-2 mb-2">
-            <ProviderDot model={selectedModel} />
-            <select
-              value={selectedModel}
-              onChange={(e) => onModelChange(e.target.value)}
-              className="text-xs text-zinc-400 bg-transparent border-0 outline-none cursor-pointer hover:text-zinc-200 transition-colors font-mono"
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <ProviderDot model={selectedModel} />
+              <select
+                value={selectedModel}
+                onChange={(e) => onModelChange(e.target.value)}
+                className="text-xs text-zinc-400 bg-transparent border-0 outline-none cursor-pointer hover:text-zinc-200 transition-colors font-mono"
+              >
+                <option value="auto">auto (router picks)</option>
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label ?? m.id} · {m.provider}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={() => setShowLeaderboard((v) => !v)}
+              title="Quality leaderboard"
+              className={`text-xs px-2 py-1 rounded-md transition-colors ${
+                showLeaderboard
+                  ? "bg-violet-600/30 text-violet-300 border border-violet-600/40"
+                  : "text-zinc-500 hover:text-zinc-300 border border-transparent hover:border-zinc-700"
+              }`}
             >
-              <option value="auto">auto (router picks)</option>
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label ?? m.id} · {m.provider}
-                </option>
-              ))}
-            </select>
+              Leaderboard
+            </button>
           </div>
         )}
 

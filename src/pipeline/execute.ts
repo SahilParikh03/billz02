@@ -11,6 +11,8 @@ import { getBudgetStatus, canSpend, recordSpend } from "@/payment/budget";
 import { publishSpend } from "@/lib/events";
 import { getProvider, getProviders } from "@/providers/index";
 import { route } from "@/policy/select";
+import { captureContext } from "@/lib/feedback";
+import { recordCost } from "@/lib/quality";
 import { getCache } from "./cache";
 import { logSpend } from "./log";
 
@@ -22,6 +24,8 @@ interface ExecOpts {
   signal?: AbortSignal;
   /** User identity for per-user daily caps; defaults to sessionId. */
   userId?: string;
+  /** Per-request policy override (X-Billz-Policy header). */
+  policyMode?: string | null;
 }
 
 /**
@@ -37,7 +41,7 @@ export async function* executeChat(
   req: ChatCompletionRequest,
   opts: ExecOpts,
 ): AsyncGenerator<StreamEvent, void, unknown> {
-  const { sessionId, traceId, signal, userId = sessionId } = opts;
+  const { sessionId, traceId, signal, userId = sessionId, policyMode } = opts;
 
   // ── 0. Cache lookup ───────────────────────────────────────────────────────────
   const cache = cfg.cache.enabled ? getCache(cfg) : null;
@@ -50,7 +54,7 @@ export async function* executeChat(
   }
 
   // ── 1. Route ──────────────────────────────────────────────────────────────────
-  const decision = route(cfg, req);
+  const decision = route(cfg, req, { policyMode });
 
   // ── 2. Budget pre-check ───────────────────────────────────────────────────────
   const initialStatus = await getBudgetStatus(sessionId);
@@ -116,6 +120,20 @@ export async function* executeChat(
 
           publishSpend(spendEvent);
           logSpend(spendEvent);
+
+          // Stage 3: capture routing context + cost so a later thumbs-up/down
+          // becomes a labeled example that tunes future routing.
+          if (decision.taskClass) {
+            captureContext({
+              traceId,
+              taskClass: decision.taskClass,
+              provider: result.provider,
+              model: result.model,
+              usdcCharged: result.usdcCharged,
+              ts: Date.now(),
+            });
+          }
+          recordCost(result.provider, result.model, result.usdcCharged);
 
           // Populate the cache for future (semantically) identical requests.
           if (cache) await cache.store(req.messages, result);

@@ -40,6 +40,7 @@ export async function POST(request: Request): Promise<Response> {
     request.headers.get("x-billz-session") ||
     newId("sess");
   const userId = request.headers.get("x-billz-user") || sessionId;
+  const policyMode = request.headers.get("x-billz-policy");
   const traceId = newId("trace");
   const requestId = newId("chatcmpl");
   const created = Math.floor(Date.now() / 1000);
@@ -54,6 +55,7 @@ export async function POST(request: Request): Promise<Response> {
     for await (const event of executeChat(cfg, body, {
       sessionId,
       userId,
+      policyMode,
       traceId,
       signal: request.signal,
     })) {
@@ -99,7 +101,7 @@ export async function POST(request: Request): Promise<Response> {
         },
       },
       {
-        headers: { "X-Billz-Session": sessionId },
+        headers: { "X-Billz-Session": sessionId, "X-Billz-Trace": traceId },
       },
     );
   }
@@ -110,6 +112,7 @@ export async function POST(request: Request): Promise<Response> {
   const it = executeChat(cfg, body, {
     sessionId,
     userId,
+    policyMode,
     traceId,
     signal: request.signal,
   })[Symbol.asyncIterator]();
@@ -228,6 +231,7 @@ export async function POST(request: Request): Promise<Response> {
     headers: {
       ...SSE_HEADERS,
       "X-Billz-Session": sessionId,
+      "X-Billz-Trace": traceId,
     },
   });
 }

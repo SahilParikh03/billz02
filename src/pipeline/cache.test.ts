@@ -93,8 +93,9 @@ describe("SemanticCache", () => {
   });
 
   it("TTL expiry → miss after TTL elapsed", async () => {
-    // 50ms TTL so we can trigger it quickly
-    const cache = getCache(makeCfg({ ttlMs: 50 }));
+    // 1s TTL: wide enough that the "before expiry" check is robust even when the
+    // full parallel suite is busy, while still expiring quickly.
+    const cache = getCache(makeCfg({ ttlMs: 1000 }));
     await cache.store(QUESTION_MSGS, makeResult());
 
     // Confirm it's a hit before expiry
@@ -102,7 +103,7 @@ describe("SemanticCache", () => {
     expect(before.hit).toBe(true);
 
     // Wait for TTL to lapse
-    await new Promise((r) => setTimeout(r, 80));
+    await new Promise((r) => setTimeout(r, 1200));
 
     const after = await cache.lookup(QUESTION_MSGS);
     expect(after.hit).toBe(false);

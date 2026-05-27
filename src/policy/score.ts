@@ -7,6 +7,7 @@ import type {
   Tier,
 } from "@/lib/types";
 import { getProviders } from "@/providers/index";
+import { learnedQuality } from "@/lib/quality";
 
 /**
  * Candidate scoring for the strong/weak cascade.
@@ -75,7 +76,10 @@ export function scoreCandidates(
     for (const m of p.models()) {
       const tier = modelTier(m);
       const estCost = estCostUsd(m, inputTokens, classification.expectedOutTokens);
-      const q = qualityPrior(m, classification.taskClass);
+      const staticQ = qualityPrior(m, classification.taskClass);
+      // Blend in the learned (feedback-derived) win-rate once any votes exist.
+      const learned = learnedQuality(classification.taskClass, p.id, m.id);
+      const q = learned != null ? 0.5 * staticQ + 0.5 * learned : staticQ;
       const score =
         estCost + latencyWeight * LATENCY_MS[tier] + qualityWeight * (1 - q);
       out.push({
@@ -85,6 +89,7 @@ export function scoreCandidates(
         estCostUsd: estCost,
         qualityPrior: q,
         tier,
+        tags: m.tags,
       });
     }
   }

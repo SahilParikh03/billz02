@@ -16,7 +16,7 @@ export function BillzApp() {
   const models = useModels();
   const [selectedModel, setSelectedModel] = useState("auto");
 
-  const { messages, isStreaming, sendMessage } = useChat({
+  const { messages, isStreaming, sendMessage, sendFeedback } = useChat({
     sessionId,
     model: selectedModel,
   });
@@ -37,6 +37,7 @@ export function BillzApp() {
             messages={messages}
             isStreaming={isStreaming}
             onSend={sendMessage}
+            onFeedback={sendFeedback}
             models={models}
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}

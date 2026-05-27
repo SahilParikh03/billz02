@@ -118,12 +118,44 @@ export interface ProviderAdapter {
 
 // ── Routing ──────────────────────────────────────────────────────────────────
 
-/** A Stage-0 routing decision (rule-based; no ML classifier yet). */
+/** A routing decision plus the classification that produced it. */
 export interface RouteDecision {
   provider: ProviderId;
   model: string;
   /** Human-readable rationale, surfaced in the spend feed for transparency. */
   reason: string;
+  /** Task class + difficulty, carried through so feedback can be labeled (Stage 3). */
+  taskClass?: QueryClass;
+  difficulty?: number;
+}
+
+// ── Feedback & policy (Stage 3) ────────────────────────────────────────────────
+
+export type PolicyMode = "frugal" | "balanced" | "premium" | "uncensored";
+
+export type FeedbackRating = "up" | "down";
+
+/** Captured per request so a later thumbs-up/down becomes a labeled example. */
+export interface RoutingContext {
+  traceId: string;
+  taskClass: QueryClass;
+  provider: ProviderId;
+  model: string;
+  usdcCharged: number;
+  ts: number;
+}
+
+/** One row of the quality-per-dollar leaderboard. */
+export interface LeaderboardRow {
+  taskClass: QueryClass;
+  provider: ProviderId;
+  model: string;
+  up: number;
+  down: number;
+  winRate: number;
+  avgCostUsd: number;
+  qualityPerDollar: number;
+  samples: number;
 }
 
 // ── Budget ───────────────────────────────────────────────────────────────────
@@ -187,6 +219,7 @@ export interface ScoredCandidate extends Candidate {
   estCostUsd: number;
   qualityPrior: number; // 0..1 prior for this model on the task class
   tier: Tier;
+  tags?: ModelTag[];
 }
 
 // ── Semantic cache (Stage 1) ────────────────────────────────────────────────────

@@ -10,6 +10,8 @@ export interface ChatMessage {
   done?: boolean;
   /** Set when a 402 budget error occurs */
   budgetExceeded?: boolean;
+  /** traceId from X-Billz-Trace header; set on completed assistant messages */
+  traceId?: string;
 }
 
 interface UseChatOptions {
@@ -22,12 +24,21 @@ interface UseChatReturn {
   isStreaming: boolean;
   sendMessage: (content: string) => Promise<void>;
   clearMessages: () => void;
+  sendFeedback: (traceId: string, rating: "up" | "down") => Promise<void>;
 }
 
 export function useChat({ sessionId, model = "auto" }: UseChatOptions): UseChatReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  const sendFeedback = useCallback(async (traceId: string, rating: "up" | "down") => {
+    await fetch("/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ traceId, rating }),
+    });
+  }, []);
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -76,6 +87,9 @@ export function useChat({ sessionId, model = "auto" }: UseChatOptions): UseChatR
           signal: ac.signal,
         });
 
+        // Capture trace id from response headers before consuming body
+        const traceId = res.headers.get("x-billz-trace") ?? undefined;
+
         // Handle 402 budget exceeded
         if (res.status === 402) {
           const errData = await res.json().catch(() => ({}));
@@ -83,7 +97,7 @@ export function useChat({ sessionId, model = "auto" }: UseChatOptions): UseChatR
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantMsgId
-                ? { ...m, content: msg, done: true, budgetExceeded: true }
+                ? { ...m, content: msg, done: true, budgetExceeded: true, traceId }
                 : m
             )
           );
@@ -128,9 +142,11 @@ export function useChat({ sessionId, model = "auto" }: UseChatOptions): UseChatR
           }
         }
 
-        // Mark done
+        // Mark done and attach traceId
         setMessages((prev) =>
-          prev.map((m) => (m.id === assistantMsgId ? { ...m, done: true } : m))
+          prev.map((m) =>
+            m.id === assistantMsgId ? { ...m, done: true, traceId } : m
+          )
         );
       } catch (err: unknown) {
         if (err instanceof Error && err.name === "AbortError") return;
@@ -158,5 +174,5 @@ export function useChat({ sessionId, model = "auto" }: UseChatOptions): UseChatR
     setIsStreaming(false);
   }, []);
 
-  return { messages, isStreaming, sendMessage, clearMessages };
+  return { messages, isStreaming, sendMessage, clearMessages, sendFeedback };
 }
