@@ -1,17 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useSession } from "./useSession";
 import { useChat } from "./useChat";
 import { useSpendFeed } from "./useSpendFeed";
 import { useHealth } from "./useHealth";
 import { useModels } from "./useModels";
+import { useAccount } from "./cdp/account";
 import { Header } from "./Header";
 import { ChatPanel } from "./ChatPanel";
 import { SpendFeed } from "./SpendFeed";
 
 export function BillzApp() {
   const sessionId = useSession();
+  const account = useAccount();
   const health = useHealth();
   const models = useModels();
   const [selectedModel, setSelectedModel] = useState("auto");
@@ -19,7 +21,17 @@ export function BillzApp() {
   const { messages, isStreaming, sendMessage, sendFeedback } = useChat({
     sessionId,
     model: selectedModel,
+    userId: account.address,
   });
+
+  // After a signed-in user's message settles, refresh their credit balance.
+  const handleSend = useCallback(
+    async (content: string) => {
+      await sendMessage(content);
+      if (account.enabled && account.address) await account.refreshCredit();
+    },
+    [sendMessage, account],
+  );
 
   const { events, sessionSpent, sessionBudget, connected } = useSpendFeed();
 
@@ -36,7 +48,7 @@ export function BillzApp() {
           <ChatPanel
             messages={messages}
             isStreaming={isStreaming}
-            onSend={sendMessage}
+            onSend={handleSend}
             onFeedback={sendFeedback}
             models={models}
             selectedModel={selectedModel}

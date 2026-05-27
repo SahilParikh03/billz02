@@ -1,6 +1,7 @@
 "use client";
 
 import { HealthData } from "./useHealth";
+import { AuthMenu } from "./cdp/AuthMenu";
 
 interface HeaderProps {
   health: HealthData | null;
@@ -37,9 +38,11 @@ export function Header({ health }: HeaderProps) {
 
       <div className="flex items-center gap-4 text-xs text-zinc-500 font-mono">
         {health && (
-          <span>budget ${health.sessionBudgetUsd.toFixed(2)} / session</span>
+          <span className="hidden sm:inline">
+            budget ${health.sessionBudgetUsd.toFixed(2)} / session
+          </span>
         )}
-        <span className="text-zinc-700">AI inference router</span>
+        <AuthMenu />
       </div>
     </header>
   );

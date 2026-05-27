@@ -26,6 +26,7 @@ export function getConfig(): AppConfig {
     providerMode: mode,
     sessionBudgetUsd: num(process.env.BILLZ_SESSION_BUDGET_USD, 5),
     userDailyBudgetUsd: num(process.env.BILLZ_USER_DAILY_BUDGET_USD, 0),
+    welcomeCreditUsd: num(process.env.BILLZ_WELCOME_CREDIT_USD, 1),
     maxPaymentPerCallUsd: num(process.env.BILLZ_MAX_PAYMENT_PER_CALL_USD, 0.1),
     network: process.env.BILLZ_NETWORK || "base-sepolia",
     facilitatorUrl:

@@ -5,6 +5,7 @@ import { subscribeSpend } from "@/lib/events";
 import { getBudgetStatus, recordSpend } from "@/payment/budget";
 import { resetStore } from "@/lib/store";
 import { resetCache } from "@/pipeline/cache";
+import { grantWelcomeCredit, getCreditBalance } from "@/lib/credit";
 import type { SpendEvent, StreamEvent } from "@/lib/types";
 
 /** Collect all events from executeChat into an array. */
@@ -151,5 +152,56 @@ describe("executeChat — budget exhaustion", () => {
 
     unsub();
     expect(received.filter((e) => e.sessionId === exhaustedSid).length).toBe(0);
+  });
+});
+
+describe("executeChat — signed-in welcome credit", () => {
+  const WALLET = "0x" + "cd".repeat(20); // valid 0x…40-hex wallet id
+  const sid = "exec-credit-session";
+
+  beforeEach(() => {
+    resetCache();
+    resetStore();
+  });
+
+  it("refuses a wallet user who has no credit (and never granted)", async () => {
+    const events = await collect(
+      getConfig(),
+      { messages: [{ role: "user", content: "no credit yet" }] },
+      { sessionId: sid, userId: WALLET, traceId: "credit-1" },
+    );
+    expect(events.length).toBe(1);
+    expect(events[0].type).toBe("error");
+    if (events[0].type === "error") expect(events[0].error).toBe("credit exhausted");
+  });
+
+  it("serves a wallet user with credit and deducts the charge from their balance", async () => {
+    await grantWelcomeCredit(WALLET, 1);
+    const before = await getCreditBalance(WALLET);
+
+    const events = await collect(
+      getConfig(),
+      { messages: [{ role: "user", content: "spend my credit" }] },
+      { sessionId: sid, userId: WALLET, traceId: "credit-2" },
+    );
+
+    const done = events.find((e) => e.type === "done");
+    expect(done).toBeDefined();
+    const after = await getCreditBalance(WALLET);
+    expect(after).toBeLessThan(before);
+    if (done && done.type === "done") {
+      expect(before - after).toBeCloseTo(done.result.usdcCharged, 8);
+    }
+  });
+
+  it("does not gate anonymous (session-only) users on credit", async () => {
+    // A non-wallet userId must never hit the credit path → normal mock completion.
+    const events = await collect(
+      getConfig(),
+      { messages: [{ role: "user", content: "anon user" }] },
+      { sessionId: sid, userId: "sess_anon_123", traceId: "credit-3" },
+    );
+    expect(events.some((e) => e.type === "done")).toBe(true);
+    expect(events.some((e) => e.type === "error")).toBe(false);
   });
 });

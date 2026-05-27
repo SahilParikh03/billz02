@@ -8,6 +8,7 @@ import type {
   StreamEvent,
 } from "@/lib/types";
 import { getBudgetStatus, canSpend, recordSpend } from "@/payment/budget";
+import { isWalletUser, hasCredit, chargeCredit } from "@/lib/credit";
 import { publishSpend } from "@/lib/events";
 import { getProvider, getProviders } from "@/providers/index";
 import { route } from "@/policy/select";
@@ -63,6 +64,14 @@ export async function* executeChat(
     return;
   }
 
+  // Signed-in (wallet) users additionally spend from their welcome credit.
+  // Anonymous session users skip this and rely on the session/daily budget.
+  const walletUser = isWalletUser(userId);
+  if (walletUser && !(await hasCredit(userId))) {
+    yield { type: "error", error: "credit exhausted" };
+    return;
+  }
+
   // ── 3. Ordered failover list (chosen provider first) ──────────────────────────
   const allActive = getProviders(cfg);
   const ordered: ProviderId[] = [
@@ -99,6 +108,9 @@ export async function* executeChat(
           const result = event.result;
 
           const status = await recordSpend(sessionId, result.usdcCharged, userId);
+
+          // Deplete the signed-in user's welcome credit by the same amount.
+          if (walletUser) await chargeCredit(userId, result.usdcCharged);
 
           const spendEvent: SpendEvent = {
             ts: Date.now(),

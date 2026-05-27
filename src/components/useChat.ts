@@ -17,6 +17,8 @@ export interface ChatMessage {
 interface UseChatOptions {
   sessionId: string;
   model?: string;
+  /** Signed-in embedded-wallet address; sent as X-Billz-User to gate on credit. */
+  userId?: string | null;
 }
 
 interface UseChatReturn {
@@ -27,7 +29,7 @@ interface UseChatReturn {
   sendFeedback: (traceId: string, rating: "up" | "down") => Promise<void>;
 }
 
-export function useChat({ sessionId, model = "auto" }: UseChatOptions): UseChatReturn {
+export function useChat({ sessionId, model = "auto", userId }: UseChatOptions): UseChatReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -82,6 +84,7 @@ export function useChat({ sessionId, model = "auto" }: UseChatOptions): UseChatR
           headers: {
             "Content-Type": "application/json",
             "X-Billz-Session": sessionId,
+            ...(userId ? { "X-Billz-User": userId } : {}),
           },
           body: JSON.stringify(body),
           signal: ac.signal,
@@ -113,7 +116,6 @@ export function useChat({ sessionId, model = "auto" }: UseChatOptions): UseChatR
         const decoder = new TextDecoder();
         let buffer = "";
 
-        // eslint-disable-next-line no-constant-condition
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -164,8 +166,7 @@ export function useChat({ sessionId, model = "auto" }: UseChatOptions): UseChatR
         abortRef.current = null;
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [messages, sessionId, model, isStreaming]
+    [messages, sessionId, model, isStreaming, userId]
   );
 
   const clearMessages = useCallback(() => {

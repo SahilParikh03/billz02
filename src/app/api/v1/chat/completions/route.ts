@@ -23,6 +23,9 @@ const SSE_HEADERS = {
   "X-Accel-Buffering": "no",
 };
 
+/** Pipeline errors that mean "out of money" → surfaced as HTTP 402. */
+const BUDGET_ERRORS = new Set(["session budget exceeded", "credit exhausted"]);
+
 export async function POST(request: Request): Promise<Response> {
   let body: ChatCompletionRequest;
   try {
@@ -66,11 +69,9 @@ export async function POST(request: Request): Promise<Response> {
         inputTokens = event.result.inputTokens;
         outputTokens = event.result.outputTokens;
       } else if (event.type === "error") {
-        const status = event.error === "session budget exceeded" ? 402 : 500;
-        const type =
-          event.error === "session budget exceeded"
-            ? "budget_exceeded"
-            : "provider_error";
+        const isBudget = BUDGET_ERRORS.has(event.error);
+        const status = isBudget ? 402 : 500;
+        const type = isBudget ? "budget_exceeded" : "provider_error";
         return Response.json(
           { error: { message: event.error, type } },
           {
@@ -120,7 +121,7 @@ export async function POST(request: Request): Promise<Response> {
   const first = await it.next();
   if (!first.done && first.value.type === "error") {
     const ev = first.value;
-    const isBudget = ev.error === "session budget exceeded";
+    const isBudget = BUDGET_ERRORS.has(ev.error);
     return Response.json(
       {
         error: {

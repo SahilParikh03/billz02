@@ -261,6 +261,8 @@ export interface AppConfig {
   sessionBudgetUsd: number;
   /** Per-user daily cap in USD; 0 (default) disables the per-user limit. */
   userDailyBudgetUsd?: number;
+  /** One-time test credit (USD) granted to a new signed-in wallet user. */
+  welcomeCreditUsd?: number;
   maxPaymentPerCallUsd: number;
   network: string; // "base-sepolia" | "base"
   facilitatorUrl: string;
