@@ -22,6 +22,13 @@ export interface Store {
   /** Atomically add `by` to a numeric key (created at 0), return the new value. */
   incrByFloat(key: string, by: number, ttlMs?: number): Promise<number>;
   del(key: string): Promise<void>;
+  /** Liveness probe: true if the backing store is reachable. Never throws. */
+  ping(): Promise<boolean>;
+}
+
+/** True when this store is shared across instances (i.e. a real network backend). */
+export function isSharedStore(store: Store): boolean {
+  return store.id !== "memory";
 }
 
 // ── In-memory store ─────────────────────────────────────────────────────────
@@ -64,6 +71,9 @@ export function createMemoryStore(): Store {
     },
     async del(key) {
       map.delete(key);
+    },
+    async ping() {
+      return true; // in-process: always reachable
     },
   };
 }
@@ -108,6 +118,13 @@ export function createRedisStore(url: string, token: string): Store {
     },
     async del(key) {
       await cmd(["DEL", key]);
+    },
+    async ping() {
+      try {
+        return String(await cmd(["PING"])) === "PONG";
+      } catch {
+        return false;
+      }
     },
   };
 }

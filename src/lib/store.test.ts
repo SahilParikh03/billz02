@@ -1,10 +1,18 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { createMemoryStore, type Store } from "./store";
+import { createMemoryStore, isSharedStore, type Store } from "./store";
 
 describe("memory store", () => {
   let s: Store;
   beforeEach(() => {
     s = createMemoryStore();
+  });
+
+  it("ping returns true (always reachable in-process)", async () => {
+    expect(await s.ping()).toBe(true);
+  });
+
+  it("is not a shared store", () => {
+    expect(isSharedStore(s)).toBe(false);
   });
 
   it("returns null for a missing key", async () => {

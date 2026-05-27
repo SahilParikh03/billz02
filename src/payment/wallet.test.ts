@@ -21,6 +21,9 @@ const BASE_CFG: Omit<AppConfig, "providerMode" | "walletPrivateKey"> = {
  */
 afterEach(() => {
   delete process.env.BILLZ_WALLET_PROVIDER;
+  delete process.env.CDP_API_KEY_ID;
+  delete process.env.CDP_API_KEY_SECRET;
+  delete process.env.CDP_WALLET_SECRET;
 });
 
 // ── walletProvider() ─────────────────────────────────────────────────────────
@@ -70,25 +73,30 @@ describe("payment/wallet.getSigner", () => {
     await expect(getSigner(cfg)).rejects.toThrow(/WALLET_PRIVATE_KEY/);
   });
 
-  it("throws a helpful CDP setup message when provider=cdp (no sdk installed)", async () => {
+  it("throws a helpful CDP setup message when provider=cdp and creds are absent", async () => {
     process.env.BILLZ_WALLET_PROVIDER = "cdp";
+    // Ensure no CDP creds leak in from the ambient environment.
+    delete process.env.CDP_API_KEY_ID;
+    delete process.env.CDP_API_KEY_SECRET;
+    delete process.env.CDP_WALLET_SECRET;
     const cfg: AppConfig = {
       ...BASE_CFG,
       providerMode: "live",
       walletPrivateKey: undefined,
     };
-    await expect(getSigner(cfg)).rejects.toThrow(/CDP/);
-    await expect(getSigner(cfg)).rejects.toThrow(/cdp-sdk/);
+    await expect(getSigner(cfg)).rejects.toThrow(/CDP Server Wallet credentials/);
   });
 
-  it("CDP error message mentions the required env vars", async () => {
+  it("CDP error message mentions all three required secrets", async () => {
     process.env.BILLZ_WALLET_PROVIDER = "cdp";
+    delete process.env.CDP_API_KEY_ID;
     const cfg: AppConfig = {
       ...BASE_CFG,
       providerMode: "live",
       walletPrivateKey: undefined,
     };
     await expect(getSigner(cfg)).rejects.toThrow(/CDP_API_KEY_ID/);
+    await expect(getSigner(cfg)).rejects.toThrow(/CDP_WALLET_SECRET/);
   });
 
   // NOTE: We cannot test the "key" happy-path here without making a live network

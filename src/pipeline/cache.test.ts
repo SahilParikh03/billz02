@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { getCache, resetCache } from "./cache";
+import { getCache, resetCache, createCache } from "./cache";
+import { createMemoryStore } from "@/lib/store";
 import type { AppConfig, ChatMessage, CompletionResult } from "@/lib/types";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -167,6 +168,34 @@ describe("SemanticCache", () => {
     expect(c2).not.toBe(c1);
     const result = await c2.lookup(QUESTION_MSGS);
     expect(result.hit).toBe(false);
+  });
+
+  it("shared store mirrors the exact layer across cache instances", async () => {
+    // One store stands in for Redis shared between two serverless instances.
+    const shared = createMemoryStore();
+    const cacheA = createCache(makeCfg().cache, shared);
+    const cacheB = createCache(makeCfg().cache, shared);
+
+    // Instance A stores a result; its in-memory map is separate from B's.
+    await cacheA.store(QUESTION_MSGS, makeResult());
+
+    // Instance B has an empty local map but finds the entry via the shared store.
+    const hit = await cacheB.lookup(QUESTION_MSGS);
+    expect(hit.hit).toBe(true);
+    if (hit.hit) {
+      expect(hit.kind).toBe("exact");
+      expect(hit.similarity).toBe(1);
+      expect(hit.result.text).toBe("Paris is the capital of France.");
+    }
+  });
+
+  it("without a shared store, a fresh instance does NOT see another's entry", async () => {
+    // No store passed → pure in-memory, so instances are isolated.
+    const cacheA = createCache(makeCfg().cache);
+    const cacheB = createCache(makeCfg().cache);
+    await cacheA.store(QUESTION_MSGS, makeResult());
+    const miss = await cacheB.lookup(QUESTION_MSGS);
+    expect(miss.hit).toBe(false);
   });
 
   it("multi-turn conversation is canonicalized and cached correctly", async () => {

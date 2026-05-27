@@ -11,10 +11,12 @@
  *   removed on lookup) + LRU (when entry count exceeds cfg.cache.maxEntries
  *   the least-recently-accessed entry is dropped on store).
  *
- * Stage 1 storage: in-memory Map on globalThis.__billzCache.
- * Stage 2 TODO: replace the in-memory store with a Redis backend behind the
- *   same SemanticCache interface so the singleton is shared across serverless
- *   instances. No changes to call-sites will be needed.
+ * Storage: an in-memory Map on globalThis.__billzCache for fast local L1/L2,
+ *   plus — when a shared Store (Redis) is configured — a write-through mirror of
+ *   the *exact* layer so identical prompts hit the cache across serverless
+ *   instances (the highest-value, lowest-risk slice to share; the semantic
+ *   nearest-neighbour layer stays per-instance). Falls back to pure in-memory
+ *   when the store is process-local.
  */
 
 import type {
@@ -25,6 +27,7 @@ import type {
   CompletionResult,
   SemanticCache,
 } from "@/lib/types";
+import { getStore, isSharedStore, type Store } from "@/lib/store";
 import { createLocalEmbedder, cosine } from "./embed";
 
 // ── Canonical conversation string ────────────────────────────────────────────
@@ -78,8 +81,16 @@ class TwoLayerCache implements SemanticCache {
   private readonly embedder = createLocalEmbedder(256);
   private _hits = 0;
   private _misses = 0;
+  /** Shared backend for the cross-instance exact layer; null = pure in-memory. */
+  private readonly sharedStore: Store | null;
 
-  constructor(private readonly cfg: AppConfig["cache"]) {}
+  constructor(private readonly cfg: AppConfig["cache"], store?: Store) {
+    this.sharedStore = store ?? null;
+  }
+
+  private storeKey(key: string): string {
+    return `billz:cache:${key}`;
+  }
 
   // Evict entries whose TTL has expired. Returns true if any were removed.
   private evictExpired(now: number): void {
@@ -110,12 +121,36 @@ class TwoLayerCache implements SemanticCache {
     const canonical = canonicalize(messages);
     const key = fnv1a32hex(canonical);
 
-    // ── L1: exact key match ──────────────────────────────────────────────────
+    // ── L1: exact key match (in-memory) ──────────────────────────────────────
     const exact = this.entries.get(key);
     if (exact) {
       exact.lastAccess = now;
       this._hits++;
       return { hit: true, kind: "exact", similarity: 1, result: exact.result };
+    }
+
+    // ── L1b: exact key match (shared store, cross-instance) ───────────────────
+    // Only consulted when a shared backend is configured. On a hit we hydrate
+    // the local map (computing the embedding) so subsequent local lookups and
+    // the semantic layer benefit too.
+    if (this.sharedStore) {
+      let raw: string | null = null;
+      try {
+        raw = await this.sharedStore.get(this.storeKey(key));
+      } catch {
+        raw = null; // store hiccup → degrade to local-only, never throw
+      }
+      if (raw) {
+        try {
+          const result = JSON.parse(raw) as CompletionResult;
+          const vector = await this.embedder.embed(canonical);
+          this.entries.set(key, { key, vector, result, createdAt: now, lastAccess: now });
+          this._hits++;
+          return { hit: true, kind: "exact", similarity: 1, result };
+        } catch {
+          // Corrupt entry — ignore and fall through to the semantic layer.
+        }
+      }
     }
 
     // ── L2: semantic nearest-neighbor ────────────────────────────────────────
@@ -154,6 +189,15 @@ class TwoLayerCache implements SemanticCache {
 
     this.entries.set(key, { key, vector, result, createdAt: now, lastAccess: now });
 
+    // Write-through the exact layer to the shared store (best-effort).
+    if (this.sharedStore) {
+      try {
+        await this.sharedStore.set(this.storeKey(key), JSON.stringify(result), this.cfg.ttlMs);
+      } catch {
+        // Store unavailable — the local cache still works; don't fail the call.
+      }
+    }
+
     // Enforce maxEntries via LRU eviction (evict until within limit)
     while (this.entries.size > this.cfg.maxEntries) {
       this.evictLRU();
@@ -181,7 +225,13 @@ const g = globalThis as unknown as { __billzCache?: SemanticCache };
  */
 export function getCache(cfg: AppConfig): SemanticCache {
   if (!g.__billzCache) {
-    g.__billzCache = new TwoLayerCache(cfg.cache);
+    // Share the exact layer only when the store is a real network backend;
+    // a process-local memory store would just duplicate the in-memory Map.
+    const store = getStore();
+    g.__billzCache = new TwoLayerCache(
+      cfg.cache,
+      isSharedStore(store) ? store : undefined,
+    );
   }
   return g.__billzCache;
 }
@@ -191,4 +241,15 @@ export function getCache(cfg: AppConfig): SemanticCache {
  */
 export function resetCache(): void {
   g.__billzCache = undefined;
+}
+
+/**
+ * Build a standalone cache with an explicit store — for tests that exercise the
+ * shared-store path without touching the process singleton or env.
+ */
+export function createCache(
+  cacheCfg: AppConfig["cache"],
+  store?: Store,
+): SemanticCache {
+  return new TwoLayerCache(cacheCfg, store);
 }

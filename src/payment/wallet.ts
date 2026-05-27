@@ -2,6 +2,9 @@ import type { Signer } from "x402/types";
 import { createSigner } from "x402-fetch";
 import type { AppConfig } from "@/lib/types";
 
+/** Default name for the CDP server account BILLZ creates/reuses across cold starts. */
+const CDP_WALLET_NAME = process.env.CDP_WALLET_NAME || "billz-router";
+
 // ── Provider selection ──────────────────────────────────────────────────────
 
 /**
@@ -19,7 +22,7 @@ export function walletProvider(): "key" | "cdp" {
   return "key";
 }
 
-// ── Module-level signer cache (key provider only) ───────────────────────────
+// ── Module-level signer caches ───────────────────────────────────────────────
 
 /**
  * Signer cache keyed by private-key string.
@@ -29,6 +32,13 @@ export function walletProvider(): "key" | "cdp" {
  * rather than one per request.
  */
 const signerCache = new Map<string, Signer>();
+
+/**
+ * CDP signer cache keyed by account name. A CDP `getOrCreateAccount` is a
+ * network round-trip to the CDP API; cache it so each warm instance derives the
+ * MPC account once, not per request.
+ */
+const cdpSignerCache = new Map<string, Signer>();
 
 // ── getSigner ────────────────────────────────────────────────────────────────
 
@@ -88,50 +98,72 @@ async function getSignerKey(cfg: AppConfig): Promise<Signer> {
   return signer;
 }
 
-// ── "cdp" provider (STUB) ────────────────────────────────────────────────────
+// ── "cdp" provider ───────────────────────────────────────────────────────────
+
+/** True when all three CDP secrets are present in the environment. */
+export function cdpCredsPresent(): boolean {
+  return Boolean(
+    process.env.CDP_API_KEY_ID &&
+      process.env.CDP_API_KEY_SECRET &&
+      process.env.CDP_WALLET_SECRET,
+  );
+}
 
 /**
- * CDP Server Wallet provider — STUB.
+ * CDP Server Wallet provider.
  *
- * Coinbase Developer Platform Server Wallets offer MPC-based key custody with
- * enforced spend caps, making them appropriate for mainnet hot-wallet use in
- * serverless environments (no plaintext private key at rest).
+ * Coinbase Developer Platform Server Wallets hold keys via MPC (no plaintext
+ * private key at rest), which is the recommended posture for a mainnet hot
+ * wallet running in stateless serverless functions. The returned
+ * `EvmServerAccount` exposes `address` / `signMessage` / `signTypedData`, which
+ * is exactly the surface x402's `EvmSigner` (= `SignerWallet | LocalAccount`)
+ * uses to sign the EIP-3009 `transferWithAuthorization` for the `exact` scheme.
  *
- * Intended integration (NOT yet implemented):
- * -----------------------------------------------------------------------
- * 1. Install the SDK:
- *      npm install @coinbase/cdp-sdk
+ * Credentials (from portal.cdp.coinbase.com → API keys / wallet secret):
+ *   CDP_API_KEY_ID, CDP_API_KEY_SECRET  – authenticate the whole CDP API.
+ *   CDP_WALLET_SECRET                   – authorizes signing/transaction calls.
+ *   CDP_WALLET_NAME (optional)          – reused across cold starts so the same
+ *                                         funded account is loaded every time.
  *
- * 2. Set environment variables:
- *      CDP_API_KEY_ID        – CDP API key ID (from Coinbase Developer Portal)
- *      CDP_API_KEY_SECRET    – CDP API key secret / private key PEM
- *      CDP_WALLET_ID         – (optional) pre-created wallet ID to reuse across
- *                              cold starts; if absent, create one on first boot
- *                              and persist the returned wallet.id.
+ * The CdpClient reads the three secrets straight from the environment; we never
+ * hold them in AppConfig. `getOrCreateAccount` is idempotent on the name, so a
+ * fresh deploy reuses the existing funded account rather than stranding funds.
  *
- * 3. Adapt the CDP account to the x402 Signer interface:
- *      import { CdpClient } from "@coinbase/cdp-sdk";
- *      const cdp = new CdpClient({ apiKeyId, apiKeySecret });
- *      const account = walletId
- *        ? await cdp.evm.getAccount({ walletId })
- *        : await cdp.evm.createAccount();
- *      // Wrap `account` so it satisfies the x402 Signer (SignerWallet) shape —
- *      // both expose signMessage / signTypedData / sendTransaction.
- *
- * See: https://docs.cdp.coinbase.com/cdp-sdk/docs/welcome
- * -----------------------------------------------------------------------
- *
- * @throws Error always — CDP SDK is not yet installed.
+ * @throws Error if the CDP credentials are not fully configured.
  */
 async function getSignerCdp(): Promise<Signer> {
-  throw new Error(
-    "payment/wallet.getSigner [provider=cdp]: CDP Server Wallets are not yet " +
-      "configured. To enable:\n" +
-      "  1. npm install @coinbase/cdp-sdk\n" +
-      "  2. Set CDP_API_KEY_ID and CDP_API_KEY_SECRET in .env.local\n" +
-      "  3. Optionally set CDP_WALLET_ID to reuse an existing server wallet\n" +
-      "See the comment block in src/payment/wallet.ts for the full integration sketch.",
-  );
+  if (!cdpCredsPresent()) {
+    throw new Error(
+      "payment/wallet.getSigner [provider=cdp]: CDP Server Wallet credentials " +
+        "are not fully configured. Set all three in .env.local:\n" +
+        "  CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET\n" +
+        "Create them at portal.cdp.coinbase.com (API key + wallet secret). " +
+        "Optionally set CDP_WALLET_NAME to reuse a named account across deploys.",
+    );
+  }
+
+  const name = CDP_WALLET_NAME;
+  const cached = cdpSignerCache.get(name);
+  if (cached) return cached;
+
+  // Lazy import: only pull in the CDP SDK on the CDP path so the default "key"
+  // path (and tests) never load it.
+  const { CdpClient } = await import("@coinbase/cdp-sdk");
+  // CdpClient reads CDP_API_KEY_ID / CDP_API_KEY_SECRET / CDP_WALLET_SECRET from env.
+  const cdp = new CdpClient();
+  const account = await cdp.evm.getOrCreateAccount({ name });
+
+  // The EvmServerAccount satisfies x402's EvmSigner surface (a viem-style
+  // account with signTypedData/signMessage/address). The structural types
+  // differ only in viem's `type: "local"` discriminant, so cast through unknown.
+  const signer = account as unknown as Signer;
+  cdpSignerCache.set(name, signer);
+  return signer;
+}
+
+/** Clear the CDP signer cache — for tests. */
+export function resetCdpSignerCache(): void {
+  cdpSignerCache.clear();
 }
 
 // ── getX402Config — NOT provided ─────────────────────────────────────────────
