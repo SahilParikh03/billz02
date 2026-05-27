@@ -63,10 +63,10 @@ Notes:
   don't span multiple serverless instances. Single-instance / `next dev` is fine
   for demos; Stage 2 moves them to Redis.
 
-## 5. Hardening before mainnet (Stage 2)
+## 5. Going to mainnet
 
-- Swap the public facilitator for the **CDP facilitator** (1,000 free tx/mo) and
-  switch `BILLZ_NETWORK=base` with mainnet USDC.
-- Move the hot-wallet key out of env into **CDP Server Wallets** / **Cobo** (MPC +
-  spend caps). The env-var key is acceptable for testnet only.
-- Add facilitator failover and per-user (not just per-session) budgets.
+The mainnet hardening listed here as future work is now **built** — CDP server
+wallet + CDP facilitator + failover, shared Redis budgets/cache, per-user credit,
+and a `/api/readiness` go-live gate. The full mainnet procedure (provision,
+configure, fund, deploy, verify, monitor, roll back) is in
+**[RUNBOOK.md](./RUNBOOK.md)**.

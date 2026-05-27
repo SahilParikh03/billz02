@@ -110,20 +110,26 @@ scripts/train.mjs     ← offline: feedback.jsonl → leaderboard + dataset expo
 
 ## Verified vs. not
 
-**Verified** (locally, mock mode): typecheck, lint, **161 tests**, production build,
-HTTP smoke tests (the 402 budget cap; the trace→feedback→leaderboard loop), an A/B
-benchmark showing ~71% cost reduction (cascade + cache), and a unit proof that
-feedback shifts routing.
+**Verified** (locally, mock mode unless noted): typecheck, lint, **198 tests**,
+production build, HTTP smoke tests (the 402 budget cap; the
+trace→feedback→leaderboard loop; `/api/readiness`; the embedded-wallet credit
+grant + gating), an A/B benchmark showing ~71% cost reduction (cascade + cache),
+and a unit proof that feedback shifts routing. The **MiniLM** embedder was
+verified live (model download → 384-d; a near-duplicate prompt served free from
+cache at cosine 0.96, end-to-end).
 
-**Not yet verifiable** (needs a funded wallet + live network — see SETUP.md):
-the Hyperbolic 402 settlement cycle, the live `getSigner` path, and Venice's
-production x402 credit-balance top-up + `X-Sign-In-With-X` (SIWE) handshake, which
-is stubbed as a TODO (Stage 0 uses an optional `VENICE_API_KEY` Bearer token).
+**Not yet verifiable** (needs live CDP creds + mainnet USDC — see
+[RUNBOOK.md](./RUNBOOK.md)): real on-chain x402 settlement and CDP MPC signing,
+the CDP embedded-wallet email→OTP round-trip, and Venice's production x402
+credit-balance top-up + `X-Sign-In-With-X` (SIWE) handshake (stubbed as a TODO;
+an optional `VENICE_API_KEY` Bearer token is the interim path).
 
 ## Roadmap
 
-**Stages 0–3 are built and mock-verified.** What remains is live mainnet hardening:
-real CDP-facilitator settlement, CDP/Cobo MPC server wallets, mainnet USDC, a real
-Redis store, CDP embedded (email) wallets, and swapping the local embedder for
-MiniLM — plus tuning the difficulty classifier (it currently rates most "explain…"
-prompts hard). See [SETUP.md](./SETUP.md). Details in `../billz_prd.md`.
+**Stages 0–3 + classifier tune + mainnet hardening + embedded wallets + MiniLM are
+built and merged.** The hardening is code-complete and env-guarded: real CDP
+server-wallet signer, CDP facilitator selection + failover, shared Redis budgets/
+cache, per-user credit, and a `/api/readiness` go-live gate. What remains is
+**live verification on mainnet** (real CDP creds + USDC) — the procedure is in
+[RUNBOOK.md](./RUNBOOK.md); testnet setup is in [SETUP.md](./SETUP.md). Details in
+`../billz_prd.md`.
