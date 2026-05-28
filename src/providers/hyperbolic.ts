@@ -36,22 +36,22 @@ import { decodeReceipt } from "@/payment/facilitator";
 
 const MODELS: ModelInfo[] = [
   {
-    id: "llama-3.3-70b",
+    id: "meta-llama/Llama-3.3-70B-Instruct",
     label: "Llama 3.3 70B",
     contextTokens: 128_000,
     tags: ["chat"],
   },
   {
-    id: "deepseek-v3",
+    id: "deepseek-ai/DeepSeek-V3-0324",
     label: "DeepSeek V3",
     contextTokens: 64_000,
     tags: ["reasoning", "code"],
   },
   {
-    id: "mistral-7b",
-    label: "Mistral 7B",
-    contextTokens: 32_000,
-    tags: ["fast", "cheap"],
+    id: "deepseek-ai/DeepSeek-R1",
+    label: "DeepSeek R1",
+    contextTokens: 64_000,
+    tags: ["reasoning"],
   },
 ];
 
@@ -60,44 +60,6 @@ const SUPPORTED_IDS = new Set(MODELS.map((m) => m.id));
 /** Rough token estimate (~1.3 tokens per whitespace-separated word). */
 function approxTokens(text: string): number {
   return Math.max(1, Math.round(text.trim().split(/\s+/).filter(Boolean).length * 1.3));
-}
-
-/**
- * Parse OpenAI-style SSE from a ReadableStream<Uint8Array>.
- * Yields each parsed JSON object from `data: {...}` lines.
- * Stops (and does not yield) the sentinel `data: [DONE]` line.
- */
-async function* parseOpenAiSse(
-  body: ReadableStream<Uint8Array>,
-): AsyncGenerator<Record<string, unknown>> {
-  const decoder = new TextDecoder();
-  const reader = body.getReader();
-  let buf = "";
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-
-      const lines = buf.split("\n");
-      buf = lines.pop() ?? "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith("data:")) continue;
-        const payload = trimmed.slice(5).trim();
-        if (payload === "[DONE]") return;
-        try {
-          yield JSON.parse(payload) as Record<string, unknown>;
-        } catch {
-          // Malformed chunk — skip
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
 }
 
 // ── Adapter deps (for test injection) ────────────────────────────────────────
@@ -121,7 +83,7 @@ export function createHyperbolicAdapter(
   const supports = (model: string): boolean => {
     if (SUPPORTED_IDS.has(model)) return true;
     const lower = model.toLowerCase();
-    return lower.includes("llama") || lower.includes("deepseek") || lower.includes("mistral");
+    return lower.includes("llama") || lower.includes("deepseek") || lower.includes("qwen");
   };
 
   async function* stream(
@@ -174,10 +136,13 @@ export function createHyperbolicAdapter(
 
     const requestId = crypto.randomUUID();
 
+    // Non-streaming: Hyperbolic's x402 endpoint returns HTTP 500 on stream:true
+    // (it errors before issuing the 402 challenge). We request the full response
+    // and re-chunk it into word-level deltas below for a streaming UX.
     const body = JSON.stringify({
       model: req.model,
       messages: req.messages,
-      stream: true,
+      stream: false,
       ...(req.temperature != null ? { temperature: req.temperature } : {}),
       ...(req.maxTokens != null ? { max_tokens: req.maxTokens } : {}),
     });
@@ -207,42 +172,27 @@ export function createHyperbolicAdapter(
       return;
     }
 
-    if (!response.body) {
-      yield { type: "error", error: "Hyperbolic: empty response body" };
-      return;
-    }
-
     let text = "";
     let inputTokens: number | undefined;
     let outputTokens: number | undefined;
 
     try {
-      for await (const chunk of parseOpenAiSse(response.body)) {
-        // Usage (may appear in a final chunk with empty delta)
-        const usage = chunk.usage as
-          | { prompt_tokens?: number; completion_tokens?: number }
-          | undefined;
-        if (usage) {
-          if (usage.prompt_tokens != null) inputTokens = usage.prompt_tokens;
-          if (usage.completion_tokens != null)
-            outputTokens = usage.completion_tokens;
-        }
+      const data = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+      };
+      text = data.choices?.[0]?.message?.content ?? "";
+      inputTokens = data.usage?.prompt_tokens;
+      outputTokens = data.usage?.completion_tokens;
 
-        // Delta content
-        const choices = chunk.choices as Array<{
-          delta?: { content?: string };
-          finish_reason?: string | null;
-        }> | undefined;
-        if (choices && choices.length > 0) {
-          const content = choices[0].delta?.content;
-          if (content) {
-            text += content;
-            yield { type: "delta", content };
-          }
-        }
+      // Re-chunk the full completion into word-level deltas for a streaming feel.
+      const words = text.split(" ");
+      for (let i = 0; i < words.length; i++) {
+        if (req.signal?.aborted) break;
+        yield { type: "delta", content: (i === 0 ? "" : " ") + words[i] };
       }
     } catch (err) {
-      yield { type: "error", error: `Hyperbolic stream error: ${String(err)}` };
+      yield { type: "error", error: `Hyperbolic parse error: ${String(err)}` };
       return;
     }
 

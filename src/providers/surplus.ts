@@ -48,10 +48,16 @@ export const SURPLUS_FLAT_USDC_PER_CALL = 0.003306;
 
 const MODELS: ModelInfo[] = [
   {
-    id: "llama-3.3-70b",
-    label: "Llama 3.3 70B (Surplus)",
+    id: "gpt-4o-mini",
+    label: "GPT-4o Mini (Surplus)",
     contextTokens: 128_000,
-    tags: ["chat"],
+    tags: ["fast", "cheap", "chat"],
+  },
+  {
+    id: "gpt-5.2",
+    label: "GPT-5.2 (Surplus)",
+    contextTokens: 128_000,
+    tags: ["reasoning", "code"],
   },
 ];
 
@@ -125,7 +131,7 @@ export function createSurplusAdapter(
 
   const supports = (model: string): boolean => {
     if (SUPPORTED_IDS.has(model)) return true;
-    return model.toLowerCase().includes("llama");
+    return model.toLowerCase().includes("gpt");
   };
 
   async function* stream(

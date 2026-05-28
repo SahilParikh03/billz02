@@ -5,10 +5,9 @@
  * - Inject `deps.wrappedFetch` to bypass `wrapFetchWithPayment` and `getSigner`.
  *   The injected fetch simulates the 200 response a real x402-settled call would
  *   return (post-payment), including the `X-PAYMENT-RESPONSE` header.
- * - For the "selector captures amount" path, we test that:
- *   (a) when `X-PAYMENT-RESPONSE` is absent/empty, settlementTxHash is undefined.
- *   (b) when `X-PAYMENT-RESPONSE` is present but invalid (no real wallet),
- *       decodeReceipt tolerates it and returns {}.
+ * - The adapter requests a NON-streaming completion (Hyperbolic's x402 endpoint
+ *   returns HTTP 500 on stream:true) and re-chunks the full text into word-level
+ *   deltas, so the mock returns a single OpenAI chat.completion JSON object.
  *
  * What we cannot test here without a funded wallet + live network:
  * - Real 402 challenge / payment negotiation
@@ -38,52 +37,42 @@ const MOCK_CFG: AppConfig = {
 };
 
 /**
- * Build a mock fetch that returns an OpenAI-style SSE stream.
+ * Build a mock fetch that returns a non-streaming OpenAI chat.completion JSON
+ * response (the post-x402-settlement 200 shape).
  *
- * @param deltas         - Content strings to emit.
- * @param usage          - Optional usage in the final data chunk.
+ * @param content        - The full assistant message content.
+ * @param usage          - Optional usage block.
  * @param extraHeaders   - Extra response headers (e.g. X-PAYMENT-RESPONSE).
  */
-function makeSseFetch(
-  deltas: string[],
+function makeJsonFetch(
+  content: string,
   usage?: { prompt_tokens: number; completion_tokens: number },
   extraHeaders: Record<string, string> = {},
 ): typeof fetch {
-  return vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-    const lines: string[] = deltas.map(
-      (content, i) =>
-        `data: ${JSON.stringify({
-          choices: [{ delta: { content }, finish_reason: null }],
-          ...(i === deltas.length - 1 && usage ? { usage } : {}),
-        })}\n\n`,
+  return vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => {
+    return new Response(
+      JSON.stringify({
+        id: "chatcmpl_test",
+        object: "chat.completion",
+        model: "meta-llama/Llama-3.3-70B-Instruct",
+        choices: [
+          { index: 0, message: { role: "assistant", content }, finish_reason: "stop" },
+        ],
+        ...(usage ? { usage } : {}),
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json", ...extraHeaders },
+      },
     );
-    lines.push("data: [DONE]\n\n");
-
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        const encoder = new TextEncoder();
-        for (const line of lines) {
-          controller.enqueue(encoder.encode(line));
-        }
-        controller.close();
-      },
-    });
-
-    return new Response(stream, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/event-stream",
-        ...extraHeaders,
-      },
-    });
   }) as unknown as typeof fetch;
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("hyperbolic adapter", () => {
-  it("streams deltas in order then yields a terminal done event", async () => {
-    const fakeFetch = makeSseFetch(["Hello", " there", "!"]);
+  it("re-chunks the completion into word deltas then yields a terminal done event", async () => {
+    const fakeFetch = makeJsonFetch("Hello there friend");
     const deps: HyperbolicDeps = { wrappedFetch: fakeFetch };
     const adapter = createHyperbolicAdapter(MOCK_CFG, deps);
 
@@ -91,7 +80,7 @@ describe("hyperbolic adapter", () => {
     let done: CompletionResult | undefined;
 
     for await (const ev of adapter.stream({
-      model: "llama-3.3-70b",
+      model: "meta-llama/Llama-3.3-70B-Instruct",
       messages: [{ role: "user", content: "say hi" }],
     })) {
       if (ev.type === "delta") deltas.push(ev.content);
@@ -99,18 +88,19 @@ describe("hyperbolic adapter", () => {
       if (ev.type === "error") throw new Error(`Unexpected error: ${ev.error}`);
     }
 
-    expect(deltas).toEqual(["Hello", " there", "!"]);
+    expect(deltas.join("")).toBe("Hello there friend");
+    expect(deltas.length).toBeGreaterThan(1);
     expect(done).toBeDefined();
   });
 
   it("done event has correct provider and paymentMode", async () => {
     const adapter = createHyperbolicAdapter(MOCK_CFG, {
-      wrappedFetch: makeSseFetch(["answer"]),
+      wrappedFetch: makeJsonFetch("answer"),
     });
 
     let done: CompletionResult | undefined;
     for await (const ev of adapter.stream({
-      model: "llama-3.3-70b",
+      model: "meta-llama/Llama-3.3-70B-Instruct",
       messages: [{ role: "user", content: "hi" }],
     })) {
       if (ev.type === "done") done = ev.result;
@@ -124,12 +114,12 @@ describe("hyperbolic adapter", () => {
     // When injecting wrappedFetch, the selector never runs, so capturedRequirements
     // stays undefined → usdcCharged defaults to 0. This is correct testnet behaviour.
     const adapter = createHyperbolicAdapter(MOCK_CFG, {
-      wrappedFetch: makeSseFetch(["token"]),
+      wrappedFetch: makeJsonFetch("token"),
     });
 
     let done: CompletionResult | undefined;
     for await (const ev of adapter.stream({
-      model: "deepseek-v3",
+      model: "deepseek-ai/DeepSeek-V3-0324",
       messages: [{ role: "user", content: "q" }],
     })) {
       if (ev.type === "done") done = ev.result;
@@ -140,13 +130,13 @@ describe("hyperbolic adapter", () => {
 
   it("settlementTxHash is undefined when X-PAYMENT-RESPONSE header is absent", async () => {
     const adapter = createHyperbolicAdapter(MOCK_CFG, {
-      wrappedFetch: makeSseFetch(["text"]),
+      wrappedFetch: makeJsonFetch("text"),
       // No X-PAYMENT-RESPONSE header → decodeReceipt returns {}
     });
 
     let done: CompletionResult | undefined;
     for await (const ev of adapter.stream({
-      model: "llama-3.3-70b",
+      model: "meta-llama/Llama-3.3-70B-Instruct",
       messages: [{ role: "user", content: "hello" }],
     })) {
       if (ev.type === "done") done = ev.result;
@@ -158,16 +148,14 @@ describe("hyperbolic adapter", () => {
   it("settlementTxHash is undefined when X-PAYMENT-RESPONSE is malformed", async () => {
     // decodeReceipt must tolerate an invalid/garbage header without throwing.
     const adapter = createHyperbolicAdapter(MOCK_CFG, {
-      wrappedFetch: makeSseFetch(
-        ["text"],
-        undefined,
-        { "X-PAYMENT-RESPONSE": "not-valid-base64!!!" },
-      ),
+      wrappedFetch: makeJsonFetch("text", undefined, {
+        "X-PAYMENT-RESPONSE": "not-valid-base64!!!",
+      }),
     });
 
     let done: CompletionResult | undefined;
     for await (const ev of adapter.stream({
-      model: "llama-3.3-70b",
+      model: "meta-llama/Llama-3.3-70B-Instruct",
       messages: [{ role: "user", content: "hello" }],
     })) {
       if (ev.type === "done") done = ev.result;
@@ -177,15 +165,14 @@ describe("hyperbolic adapter", () => {
     expect(done!.settlementTxHash).toBeUndefined();
   });
 
-  it("assembled text equals concatenated deltas", async () => {
-    const parts = ["The ", "answer ", "is 42"];
+  it("assembled text equals the upstream completion content", async () => {
     const adapter = createHyperbolicAdapter(MOCK_CFG, {
-      wrappedFetch: makeSseFetch(parts),
+      wrappedFetch: makeJsonFetch("The answer is 42"),
     });
 
     let done: CompletionResult | undefined;
     for await (const ev of adapter.stream({
-      model: "mistral-7b",
+      model: "meta-llama/Llama-3.3-70B-Instruct",
       messages: [{ role: "user", content: "answer?" }],
     })) {
       if (ev.type === "done") done = ev.result;
@@ -197,12 +184,12 @@ describe("hyperbolic adapter", () => {
   it("input/output token counts come from usage when present", async () => {
     const usage = { prompt_tokens: 15, completion_tokens: 30 };
     const adapter = createHyperbolicAdapter(MOCK_CFG, {
-      wrappedFetch: makeSseFetch(["reply"], usage),
+      wrappedFetch: makeJsonFetch("reply", usage),
     });
 
     let done: CompletionResult | undefined;
     for await (const ev of adapter.stream({
-      model: "llama-3.3-70b",
+      model: "meta-llama/Llama-3.3-70B-Instruct",
       messages: [{ role: "user", content: "count me" }],
     })) {
       if (ev.type === "done") done = ev.result;
@@ -212,12 +199,26 @@ describe("hyperbolic adapter", () => {
     expect(done!.outputTokens).toBe(30);
   });
 
-  it("wrappedFetch is called with the correct URL and method", async () => {
-    const fakeFetch = makeSseFetch(["ok"]);
+  it("requests a non-streaming completion (stream:false)", async () => {
+    const fakeFetch = makeJsonFetch("ok");
     const adapter = createHyperbolicAdapter(MOCK_CFG, { wrappedFetch: fakeFetch });
 
     for await (const _ of adapter.stream({
-      model: "llama-3.3-70b",
+      model: "meta-llama/Llama-3.3-70B-Instruct",
+      messages: [{ role: "user", content: "test" }],
+    })) { /* consume */ }
+
+    const [, init] = (fakeFetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const parsed = JSON.parse((init as RequestInit).body as string);
+    expect(parsed.stream).toBe(false);
+  });
+
+  it("wrappedFetch is called with the correct URL and method", async () => {
+    const fakeFetch = makeJsonFetch("ok");
+    const adapter = createHyperbolicAdapter(MOCK_CFG, { wrappedFetch: fakeFetch });
+
+    for await (const _ of adapter.stream({
+      model: "meta-llama/Llama-3.3-70B-Instruct",
       messages: [{ role: "user", content: "test" }],
     })) { /* consume */ }
 
@@ -228,11 +229,11 @@ describe("hyperbolic adapter", () => {
   });
 
   it("X-Request-ID header is sent with a valid UUID", async () => {
-    const fakeFetch = makeSseFetch(["ok"]);
+    const fakeFetch = makeJsonFetch("ok");
     const adapter = createHyperbolicAdapter(MOCK_CFG, { wrappedFetch: fakeFetch });
 
     for await (const _ of adapter.stream({
-      model: "llama-3.3-70b",
+      model: "meta-llama/Llama-3.3-70B-Instruct",
       messages: [{ role: "user", content: "test" }],
     })) { /* consume */ }
 
@@ -253,7 +254,7 @@ describe("hyperbolic adapter", () => {
 
     let errorEvent: string | undefined;
     for await (const ev of adapter.stream({
-      model: "llama-3.3-70b",
+      model: "meta-llama/Llama-3.3-70B-Instruct",
       messages: [{ role: "user", content: "hello" }],
     })) {
       if (ev.type === "error") errorEvent = ev.error;
@@ -271,7 +272,7 @@ describe("hyperbolic adapter", () => {
 
     let errorEvent: string | undefined;
     for await (const ev of adapter.stream({
-      model: "llama-3.3-70b",
+      model: "meta-llama/Llama-3.3-70B-Instruct",
       messages: [{ role: "user", content: "hello" }],
     })) {
       if (ev.type === "error") errorEvent = ev.error;
@@ -280,45 +281,35 @@ describe("hyperbolic adapter", () => {
     expect(errorEvent).toContain("network timeout");
   });
 
-  it("models() returns the static list including llama, deepseek, mistral", () => {
+  it("models() returns the static list of live Hyperbolic ids", () => {
     const adapter = createHyperbolicAdapter(MOCK_CFG);
     const ids = adapter.models().map((m) => m.id);
-    expect(ids).toContain("llama-3.3-70b");
-    expect(ids).toContain("deepseek-v3");
-    expect(ids).toContain("mistral-7b");
+    expect(ids).toContain("meta-llama/Llama-3.3-70B-Instruct");
+    expect(ids).toContain("deepseek-ai/DeepSeek-V3-0324");
+    expect(ids).toContain("deepseek-ai/DeepSeek-R1");
   });
 
   it("priceFor() returns undefined (dynamic pricing)", () => {
     const adapter = createHyperbolicAdapter(MOCK_CFG);
-    expect(adapter.priceFor("llama-3.3-70b")).toBeUndefined();
+    expect(adapter.priceFor("meta-llama/Llama-3.3-70B-Instruct")).toBeUndefined();
   });
 
   it("supports() matches known IDs and substring patterns", () => {
     const adapter = createHyperbolicAdapter(MOCK_CFG);
-    expect(adapter.supports("llama-3.3-70b")).toBe(true);
-    expect(adapter.supports("deepseek-v3")).toBe(true);
-    expect(adapter.supports("mistral-7b")).toBe(true);
+    expect(adapter.supports("meta-llama/Llama-3.3-70B-Instruct")).toBe(true);
+    expect(adapter.supports("deepseek-ai/DeepSeek-V3-0324")).toBe(true);
+    expect(adapter.supports("deepseek-ai/DeepSeek-R1")).toBe(true);
     // Substring matches
     expect(adapter.supports("llama-3.2-3b")).toBe(true);
     expect(adapter.supports("deepseek-r1")).toBe(true);
-    expect(adapter.supports("mistral-nemo")).toBe(true);
+    expect(adapter.supports("Qwen/Qwen3-Coder-480B-A35B-Instruct")).toBe(true);
     // Unknown
     expect(adapter.supports("gpt-4o")).toBe(false);
     expect(adapter.supports("claude-opus-4")).toBe(false);
   });
 
-  /**
-   * Simulates the "selector captures amount → usdcCharged" path.
-   *
-   * In production, `wrapFetchWithPayment` calls our selector with the 402
-   * PaymentRequirements. Here we verify the math manually: if maxAmountRequired
-   * were "50000" (= 0.05 USDC), usdcCharged should be 0.05.
-   *
-   * We cannot exercise the real selector path without a live 402 exchange,
-   * but we can validate the conversion formula used in the adapter.
-   */
   it("usdcCharged computation: 50000 base units = 0.05 USDC", () => {
-    // This just validates our conversion formula independently
+    // Validates the conversion formula used in the adapter independently.
     const maxAmountRequired = "50000";
     const usdcCharged = Number(maxAmountRequired) / 1e6;
     expect(usdcCharged).toBeCloseTo(0.05, 6);

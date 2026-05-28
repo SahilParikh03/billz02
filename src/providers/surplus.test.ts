@@ -108,12 +108,13 @@ async function collectEvents(
 describe("surplus adapter", () => {
   // ── Static metadata ─────────────────────────────────────────────────────────
 
-  it("models() includes llama-3.3-70b with chat tag", () => {
+  it("models() includes the live Surplus gpt ids with expected tags", () => {
     const adapter = createSurplusAdapter(MOCK_CFG);
     const ids = adapter.models().map((m) => m.id);
-    expect(ids).toContain("llama-3.3-70b");
-    const llama = adapter.models().find((m) => m.id === "llama-3.3-70b");
-    expect(llama?.tags).toContain("chat");
+    expect(ids).toContain("gpt-4o-mini");
+    expect(ids).toContain("gpt-5.2");
+    const mini = adapter.models().find((m) => m.id === "gpt-4o-mini");
+    expect(mini?.tags).toContain("chat");
   });
 
   it("priceFor() returns undefined (flat per-call, not per-token)", () => {
@@ -124,19 +125,20 @@ describe("surplus adapter", () => {
 
   it("supports() matches known IDs", () => {
     const adapter = createSurplusAdapter(MOCK_CFG);
-    expect(adapter.supports("llama-3.3-70b")).toBe(true);
+    expect(adapter.supports("gpt-4o-mini")).toBe(true);
+    expect(adapter.supports("gpt-5.2")).toBe(true);
   });
 
-  it("supports() matches 'llama' substring", () => {
+  it("supports() matches 'gpt' substring", () => {
     const adapter = createSurplusAdapter(MOCK_CFG);
-    expect(adapter.supports("llama-3.2-3b")).toBe(true);
-    expect(adapter.supports("meta-llama-70b")).toBe(true);
-    expect(adapter.supports("LLAMA-ANYTHING")).toBe(true);
+    expect(adapter.supports("gpt-4o")).toBe(true);
+    expect(adapter.supports("gpt-5.2-pro")).toBe(true);
+    expect(adapter.supports("GPT-ANYTHING")).toBe(true);
   });
 
   it("supports() rejects unrelated models", () => {
     const adapter = createSurplusAdapter(MOCK_CFG);
-    expect(adapter.supports("gpt-4o")).toBe(false);
+    expect(adapter.supports("llama-3.3-70b")).toBe(false);
     expect(adapter.supports("claude-opus-4")).toBe(false);
     expect(adapter.supports("deepseek-v3")).toBe(false);
   });
