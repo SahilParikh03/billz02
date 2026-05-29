@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { fetchWithX402Retry, isRetryablePaymentFailure } from "./retry";
+import {
+  fetchWithX402Retry,
+  isRetryablePaymentFailure,
+  isRetryableUpstreamOverload,
+} from "./retry";
 
 const VERIFY_FAIL_BODY = JSON.stringify({
   error: {
@@ -36,6 +40,20 @@ describe("isRetryablePaymentFailure", () => {
   });
 });
 
+describe("isRetryableUpstreamOverload", () => {
+  it("true for gateway statuses and overloaded/not-ready bodies", () => {
+    expect(isRetryableUpstreamOverload(503, "")).toBe(true);
+    expect(isRetryableUpstreamOverload(502, "")).toBe(true);
+    expect(isRetryableUpstreamOverload(500, "Backend Error: 503 - overloaded or not ready")).toBe(true);
+    expect(isRetryableUpstreamOverload(500, "temporarily unavailable")).toBe(true);
+  });
+
+  it("false for ordinary errors (e.g. 400 non-serverless model)", () => {
+    expect(isRetryableUpstreamOverload(400, "Unable to access non-serverless model")).toBe(false);
+    expect(isRetryableUpstreamOverload(200, "ok")).toBe(false);
+  });
+});
+
 describe("fetchWithX402Retry", () => {
   it("returns immediately on success (body untouched)", async () => {
     const fn = vi.fn(async () => resp(200, "ok-body"));
@@ -64,12 +82,22 @@ describe("fetchWithX402Retry", () => {
     expect(fn).toHaveBeenCalledTimes(3); // initial + 2 retries
   });
 
-  it("does NOT retry a 5xx (avoids double-charge) — fails after one attempt", async () => {
+  it("does NOT retry a 5xx by default (avoids double-charge) — fails after one attempt", async () => {
     const fn = vi.fn(async () => resp(500, "Backend Error: 503 overloaded"));
     const r = await fetchWithX402Retry(fn, fastOpts);
     expect(r.ok).toBe(false);
     expect(r.status).toBe(500);
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries upstream overload only when opted in (Hyperbolic, verified uncharged)", async () => {
+    const fn = vi
+      .fn()
+      .mockResolvedValueOnce(resp(500, "Backend Error: 503 - The server is overloaded or not ready yet."))
+      .mockResolvedValueOnce(resp(200, "recovered"));
+    const r = await fetchWithX402Retry(fn, { ...fastOpts, retryUpstreamOverload: true });
+    expect(r.ok).toBe(true);
+    expect(fn).toHaveBeenCalledTimes(2);
   });
 
   it("does not retry once the signal is aborted", async () => {

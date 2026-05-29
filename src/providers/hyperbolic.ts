@@ -140,20 +140,23 @@ export function createHyperbolicAdapter(
       ...(req.maxTokens != null ? { max_tokens: req.maxTokens } : {}),
     });
 
-    // Safe retry: only re-signs on a pre-settlement 402 payment-verification
-    // failure (concurrent terminals sharing the wallet). Upstream 5xx are NOT
-    // retried — they can occur after settlement, so retrying could double-charge.
-    const attempt = await fetchWithX402Retry(() =>
-      activeFetch(cfg.hyperbolic.url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Request-ID": crypto.randomUUID(),
-        },
-        body,
-        signal: req.signal,
-      }),
-      { signal: req.signal },
+    // Retry on (a) pre-settlement 402 payment failures (concurrent terminals
+    // sharing the wallet) and (b) transient upstream overload. The latter is
+    // enabled here because Hyperbolic's backend 503 (surfaced as HTTP 500
+    // "...overloaded...") is verified NOT to settle payment — the wallet only
+    // ever debits on a successful inference — so re-trying can't double-charge.
+    const attempt = await fetchWithX402Retry(
+      () =>
+        activeFetch(cfg.hyperbolic.url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": crypto.randomUUID(),
+          },
+          body,
+          signal: req.signal,
+        }),
+      { signal: req.signal, retryUpstreamOverload: true },
     );
 
     if (!attempt.ok || !attempt.response) {

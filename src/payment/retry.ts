@@ -35,6 +35,14 @@ export interface X402RetryOpts {
   sleep?: (ms: number) => Promise<void>;
   /** Injectable jitter in ms for deterministic tests (defaults to random 0–250). */
   jitterMs?: () => number;
+  /**
+   * Also retry transient upstream-overload errors (the inference backend being
+   * overloaded / not ready). OFF by default and SAFE ONLY for providers where
+   * such an error is proven not to settle payment — otherwise retrying risks
+   * double-charging. Enabled for Hyperbolic, whose backend 503s are verified
+   * not to debit the wallet (a 503 means no inference ran → no settlement).
+   */
+  retryUpstreamOverload?: boolean;
 }
 
 /**
@@ -45,6 +53,19 @@ export interface X402RetryOpts {
 export function isRetryablePaymentFailure(status: number, bodyText: string): boolean {
   if (status !== 402) return false;
   return /verification[_\s]?failed|simulation[_\s]?failed/i.test(bodyText);
+}
+
+/**
+ * True for a transient upstream-overload signal: a gateway status (502/503/504)
+ * or a wrapped backend error whose body says the model server is overloaded /
+ * not ready / temporarily unavailable. Hyperbolic surfaces its upstream 503 as
+ * an HTTP 500 with that text, so we inspect the body too.
+ *
+ * Only honored when the caller opts in (see `retryUpstreamOverload`).
+ */
+export function isRetryableUpstreamOverload(status: number, bodyText: string): boolean {
+  if (status === 502 || status === 503 || status === 504) return true;
+  return /\b50[234]\b|overloaded|not ready|temporarily unavailable/i.test(bodyText);
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -97,7 +118,11 @@ export async function fetchWithX402Retry(
     lastStatus = response.status;
     lastErr = errorText;
 
-    if (attempt < maxRetries && isRetryablePaymentFailure(response.status, errorText)) {
+    const retryable =
+      isRetryablePaymentFailure(response.status, errorText) ||
+      (opts.retryUpstreamOverload === true &&
+        isRetryableUpstreamOverload(response.status, errorText));
+    if (attempt < maxRetries && retryable) {
       continue;
     }
     return { ok: false, status: response.status, errorText };
