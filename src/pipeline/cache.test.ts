@@ -215,4 +215,42 @@ describe("SemanticCache", () => {
       expect(result.result.text).toBe("Berlin is the capital of Germany.");
     }
   });
+
+  // ── Model scoping (multi-terminal compare-models UX) ──────────────────────────
+
+  it("different model scopes do not share a cached answer", async () => {
+    const cache = getCache(makeCfg());
+    await cache.store(QUESTION_MSGS, makeResult("answer from model A"), "model-a");
+
+    // Same prompt, a different pinned model → must miss (not serve A's answer).
+    const miss = await cache.lookup(QUESTION_MSGS, "model-b");
+    expect(miss.hit).toBe(false);
+
+    // The shared (auto) namespace is also separate from a pinned model.
+    const autoMiss = await cache.lookup(QUESTION_MSGS, "");
+    expect(autoMiss.hit).toBe(false);
+  });
+
+  it("same model scope still hits (per-model cost saving preserved)", async () => {
+    const cache = getCache(makeCfg());
+    await cache.store(QUESTION_MSGS, makeResult("answer from model A"), "model-a");
+
+    const hit = await cache.lookup(QUESTION_MSGS, "model-a");
+    expect(hit.hit).toBe(true);
+    if (hit.hit) {
+      expect(hit.result.text).toBe("answer from model A");
+    }
+  });
+
+  it("semantic layer also respects scope (near-duplicate, wrong model → miss)", async () => {
+    const cache = getCache(makeCfg({ simThreshold: 0.85 }));
+    await cache.store(QUESTION_MSGS, makeResult("answer from model A"), "model-a");
+
+    const nearDup: ChatMessage[] = [
+      { role: "user", content: "What's the capital of France?" },
+    ];
+    // Would be a semantic hit in the same scope, but a different model must miss.
+    const miss = await cache.lookup(nearDup, "model-b");
+    expect(miss.hit).toBe(false);
+  });
 });

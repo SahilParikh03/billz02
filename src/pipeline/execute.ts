@@ -15,7 +15,7 @@ import { route } from "@/policy/select";
 import { captureContext } from "@/lib/feedback";
 import { recordCost } from "@/lib/quality";
 import { getCache } from "./cache";
-import { logSpend } from "./log";
+import { logSpend, logProviderError } from "./log";
 
 const UPFRONT_ESTIMATE_USD = 0.0001;
 
@@ -44,10 +44,16 @@ export async function* executeChat(
 ): AsyncGenerator<StreamEvent, void, unknown> {
   const { sessionId, traceId, signal, userId = sessionId, policyMode } = opts;
 
+  // The user pins each terminal to one model. A non-empty `pinnedModel` both
+  // (a) namespaces the cache so two models never share an answer, and (b) forces
+  // strict routing below (serve that exact model or fail — never substitute).
+  // Empty string = the `auto` router path (shared cache + cross-model failover).
+  const pinnedModel = req.model && req.model !== "auto" ? req.model : "";
+
   // ── 0. Cache lookup ───────────────────────────────────────────────────────────
   const cache = cfg.cache.enabled ? getCache(cfg) : null;
   if (cache) {
-    const hit = await cache.lookup(req.messages);
+    const hit = await cache.lookup(req.messages, pinnedModel);
     if (hit.hit) {
       yield* serveFromCache(hit, opts);
       return;
@@ -84,10 +90,21 @@ export async function* executeChat(
     const adapter = getProvider(cfg, providerId);
     if (!adapter) continue;
 
-    const model =
-      providerId === decision.provider
-        ? decision.model
-        : adapter.models()[0]?.id ?? req.model ?? "";
+    // For a pinned model, only providers that actually serve THAT exact model
+    // are eligible, and we always send that id — never silently substitute a
+    // different model. Each terminal is pinned to one model by the user, so a
+    // failed call must surface as an error, not as another model's answer.
+    // Cross-model failover stays enabled only for the `auto` router path.
+    let model: string;
+    if (pinnedModel) {
+      if (!adapter.supports(pinnedModel)) continue;
+      model = pinnedModel;
+    } else {
+      model =
+        providerId === decision.provider
+          ? decision.model
+          : adapter.models()[0]?.id ?? req.model ?? "";
+    }
 
     const providerReq = {
       model,
@@ -147,17 +164,35 @@ export async function* executeChat(
           }
           recordCost(result.provider, result.model, result.usdcCharged);
 
-          // Populate the cache for future (semantically) identical requests.
-          if (cache) await cache.store(req.messages, result);
+          // Populate the cache for future (semantically) identical requests,
+          // under the same model namespace we looked up with.
+          if (cache) await cache.store(req.messages, result, pinnedModel);
 
           yield event;
           return;
         } else if (event.type === "error") {
-          break; // this provider failed — try the next one (not charged)
+          // This provider failed — log it (not charged) and try the next one.
+          logProviderError({
+            traceId,
+            sessionId,
+            provider: providerId,
+            model,
+            error: event.error,
+            latencyMs: Date.now() - start,
+          });
+          break;
         }
       }
-    } catch {
+    } catch (err) {
       // adapter/network exception — treat as a provider failure, try next
+      logProviderError({
+        traceId,
+        sessionId,
+        provider: providerId,
+        model,
+        error: err instanceof Error ? err.message : String(err),
+        latencyMs: Date.now() - start,
+      });
     }
   }
 

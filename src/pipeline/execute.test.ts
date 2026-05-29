@@ -205,3 +205,39 @@ describe("executeChat — signed-in welcome credit", () => {
     expect(events.some((e) => e.type === "error")).toBe(false);
   });
 });
+
+describe("executeChat — pinned model is honored strictly (manual panes)", () => {
+  beforeEach(() => {
+    resetCache();
+    resetStore();
+  });
+
+  it("a pinned, supported model is served as exactly that model", async () => {
+    const events = await collect(
+      getConfig(),
+      { model: "mock-strong", messages: [{ role: "user", content: "pin me" }] },
+      { sessionId: "pin-1", traceId: "pin-1" },
+    );
+    const done = events.find((e) => e.type === "done");
+    expect(done).toBeDefined();
+    if (done && done.type === "done") {
+      expect(done.result.model).toBe("mock-strong");
+    }
+  });
+
+  it("a pinned model no provider can serve errors out — never substitutes another model", async () => {
+    const events = await collect(
+      getConfig(),
+      { model: "gpt-4o-mini", messages: [{ role: "user", content: "no provider here" }] },
+      { sessionId: "pin-2", traceId: "pin-2" },
+    );
+    // Mock mode cannot serve gpt-4o-mini, so the call must fail rather than
+    // silently answer as a mock model.
+    expect(events.some((e) => e.type === "done")).toBe(false);
+    const err = events.find((e) => e.type === "error");
+    expect(err).toBeDefined();
+    if (err && err.type === "error") {
+      expect(err.error).toBe("all providers failed");
+    }
+  });
+});

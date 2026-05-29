@@ -256,8 +256,13 @@ export interface CacheStats {
 }
 
 export interface SemanticCache {
-  lookup(messages: ChatMessage[]): Promise<CacheLookup>;
-  store(messages: ChatMessage[], result: CompletionResult): Promise<void>;
+  /**
+   * `scope` namespaces the cache so requests pinned to different models never
+   * share a cached answer (the multi-terminal compare-models UX). Empty string
+   * (the default) is the shared namespace used by the `auto` router path.
+   */
+  lookup(messages: ChatMessage[], scope?: string): Promise<CacheLookup>;
+  store(messages: ChatMessage[], result: CompletionResult, scope?: string): Promise<void>;
   stats(): CacheStats;
 }
 
