@@ -35,6 +35,7 @@ import type {
 } from "@/lib/types";
 import { getSigner } from "@/payment/wallet";
 import { decodeReceipt } from "@/payment/facilitator";
+import { fetchWithX402Retry } from "@/payment/retry";
 
 // ── Flat per-call price ───────────────────────────────────────────────────────
 // This is a constant — Surplus charges exactly this per inference call regardless
@@ -56,6 +57,14 @@ const MODELS: ModelInfo[] = [
   {
     id: "gpt-5.2",
     label: "GPT-5.2 (Surplus)",
+    contextTokens: 128_000,
+    tags: ["reasoning", "code"],
+  },
+  {
+    // DeepSeek served via Surplus — Hyperbolic's DeepSeek endpoints are dead
+    // (see hyperbolic.ts). Surplus serves it and settles reliably.
+    id: "deepseek-v3.2",
+    label: "DeepSeek V3.2 (Surplus)",
     contextTokens: 128_000,
     tags: ["reasoning", "code"],
   },
@@ -112,6 +121,82 @@ export interface SurplusDeps {
   wrappedFetch?: typeof fetch;
 }
 
+// ── x402 challenge normalization ──────────────────────────────────────────────
+
+/** CAIP-2 chain ids → the short network names this x402-fetch version accepts. */
+const CAIP_TO_X402_NETWORK: Record<string, string> = {
+  "eip155:8453": "base",
+  "eip155:84532": "base-sepolia",
+};
+
+/**
+ * Surplus emits an x402 **v2** 402 challenge, but x402-fetch 1.2.0 parses each
+ * `accepts[]` entry against the canonical **v1** `PaymentRequirementsSchema`.
+ * Surplus's entries differ in three ways that make that parse throw:
+ *   1. `network` is the CAIP-2 id "eip155:8453" (schema wants the short "base").
+ *   2. the amount field is `amount` (schema wants `maxAmountRequired`).
+ *   3. `resource`/`description`/`mimeType` live at the top level, not per-entry
+ *      (the schema requires them on each entry).
+ * It also advertises a non-standard `"upto"` (Permit2) scheme entry, which the
+ * schema's `scheme: enum(["exact"])` rejects.
+ *
+ * This wrapper rewrites the 402 body into the shape x402-fetch can parse: keep
+ * only the `exact` (EIP-3009) entry and fill the canonical fields. We preserve
+ * the top-level `x402Version` (2) untouched — wrapFetchWithPayment passes it
+ * straight into the signed payload, so Surplus still receives the v2 payment it
+ * expects. The on-chain target (USDC on Base 8453) is unchanged, so settlement
+ * is unaffected.
+ */
+export function normalizeSurplus402(baseFetch: typeof fetch): typeof fetch {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const res = await baseFetch(input, init);
+    if (res.status !== 402) return res;
+    const text = await res.text();
+    try {
+      const parsed = JSON.parse(text);
+      const top = (parsed.resource ?? {}) as {
+        url?: string;
+        description?: string;
+        mimeType?: string;
+      };
+      const accepts: unknown[] = Array.isArray(parsed.accepts) ? parsed.accepts : [];
+
+      const canonical = accepts
+        .filter((a): a is Record<string, unknown> => {
+          return !!a && typeof a === "object" && (a as { scheme?: string }).scheme === "exact";
+        })
+        .map((a) => ({
+          scheme: "exact",
+          network: CAIP_TO_X402_NETWORK[a.network as string] ?? (a.network as string),
+          maxAmountRequired: String(a.maxAmountRequired ?? a.amount ?? "0"),
+          resource: (a.resource as string) ?? top.url ?? "",
+          description: (a.description as string) ?? top.description ?? "",
+          mimeType: (a.mimeType as string) ?? top.mimeType ?? "application/json",
+          payTo: a.payTo,
+          maxTimeoutSeconds: a.maxTimeoutSeconds ?? 120,
+          asset: a.asset,
+          ...(a.extra ? { extra: a.extra } : {}),
+          ...(a.outputSchema ? { outputSchema: a.outputSchema } : {}),
+        }));
+
+      const headers = new Headers(res.headers);
+      headers.delete("content-length");
+      headers.delete("content-encoding");
+      return new Response(JSON.stringify({ ...parsed, accepts: canonical }), {
+        status: 402,
+        statusText: res.statusText,
+        headers,
+      });
+    } catch {
+      return new Response(text, {
+        status: 402,
+        statusText: res.statusText,
+        headers: res.headers,
+      });
+    }
+  }) as unknown as typeof fetch;
+}
+
 // ── Adapter factory ────────────────────────────────────────────────────────────
 
 export function createSurplusAdapter(
@@ -129,10 +214,9 @@ export function createSurplusAdapter(
   // Flat per-call pricing: not expressed as per-token, so priceFor returns undefined.
   const priceFor = (_model: string): PricePrior | undefined => undefined;
 
-  const supports = (model: string): boolean => {
-    if (SUPPORTED_IDS.has(model)) return true;
-    return model.toLowerCase().includes("gpt");
-  };
+  // Strict exact-id matching — see the note in hyperbolic.ts. Surplus actually
+  // serves 177 models; we only advertise the ids we've verified settle.
+  const supports = (model: string): boolean => SUPPORTED_IDS.has(model);
 
   async function* stream(
     req: ProviderRequest,
@@ -158,10 +242,12 @@ export function createSurplusAdapter(
       }
 
       const maxValue = BigInt(Math.round(cfg.maxPaymentPerCallUsd * 1e6));
-      activeFetch = wrapFetchWithPayment(globalThis.fetch, signer, maxValue);
+      activeFetch = wrapFetchWithPayment(
+        normalizeSurplus402(globalThis.fetch),
+        signer,
+        maxValue,
+      );
     }
-
-    const requestId = crypto.randomUUID();
 
     const body = JSON.stringify({
       model: req.model,
@@ -171,30 +257,32 @@ export function createSurplusAdapter(
       ...(req.maxTokens != null ? { max_tokens: req.maxTokens } : {}),
     });
 
-    let response: Response;
-    try {
-      response = await activeFetch(chatUrl, {
+    // Paid fetch with safe retry: concurrent terminals share one wallet, so some
+    // settlements collide and the facilitator returns a pre-settlement 402
+    // verification failure. fetchWithX402Retry re-signs (fresh nonce) with
+    // jittered backoff — only for that provably-uncharged case. A fresh
+    // X-Request-ID per attempt keeps Surplus from de-duping the retry.
+    const attempt = await fetchWithX402Retry(() =>
+      activeFetch(chatUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Request-ID": requestId,
+          "X-Request-ID": crypto.randomUUID(),
         },
         body,
         signal: req.signal,
-      });
-    } catch (err) {
-      yield { type: "error", error: `Surplus fetch failed: ${String(err)}` };
-      return;
-    }
+      }),
+      { signal: req.signal },
+    );
 
-    if (!response.ok) {
-      const errText = await response.text().catch(() => "(no body)");
+    if (!attempt.ok || !attempt.response) {
       yield {
         type: "error",
-        error: `Surplus HTTP ${response.status}: ${errText}`,
+        error: `Surplus HTTP ${attempt.status ?? 0}: ${attempt.errorText ?? "request failed"}`,
       };
       return;
     }
+    const response = attempt.response;
 
     if (!response.body) {
       yield { type: "error", error: "Surplus: empty response body" };
@@ -235,6 +323,12 @@ export function createSurplusAdapter(
     }
 
     // Decode the settlement receipt from the response header.
+    // NOTE: Surplus settles on-chain (verified: a call debits the flat fee from
+    // the wallet's USDC balance) but, unlike Hyperbolic, does NOT return an
+    // `X-PAYMENT-RESPONSE` receipt header — it only lists it in CORS expose
+    // headers. So `settlementTxHash` is typically undefined for Surplus and the
+    // spend feed shows no basescan link for these calls. decodeReceipt tolerates
+    // the missing header (returns {}).
     const paymentResponseHeader = response.headers.get("X-PAYMENT-RESPONSE");
     const { settlementTxHash } = decodeReceipt(paymentResponseHeader);
 

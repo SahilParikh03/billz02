@@ -29,29 +29,24 @@ import type {
 } from "@/lib/types";
 import { getSigner } from "@/payment/wallet";
 import { decodeReceipt } from "@/payment/facilitator";
+import { fetchWithX402Retry } from "@/payment/retry";
 
 // ── Static model list ─────────────────────────────────────────────────────────
 // Price is dynamic (from 402 response), so inputPricePerM/outputPricePerM are absent.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Only Llama-3.3 is reliably served by the hyperbolic-x402 endpoint. Verified
+// 2026-05-29: DeepSeek-V3-0324 persistently returns upstream 503 ("server
+// overloaded"), and DeepSeek-R1 returns 400 ("non-serverless model" — not
+// available via this serverless endpoint at all). DeepSeek is offered through
+// Surplus instead, which settles reliably. Don't list models that 500 — it just
+// hands users broken terminals.
 const MODELS: ModelInfo[] = [
   {
     id: "meta-llama/Llama-3.3-70B-Instruct",
     label: "Llama 3.3 70B",
     contextTokens: 128_000,
     tags: ["chat"],
-  },
-  {
-    id: "deepseek-ai/DeepSeek-V3-0324",
-    label: "DeepSeek V3",
-    contextTokens: 64_000,
-    tags: ["reasoning", "code"],
-  },
-  {
-    id: "deepseek-ai/DeepSeek-R1",
-    label: "DeepSeek R1",
-    contextTokens: 64_000,
-    tags: ["reasoning"],
   },
 ];
 
@@ -80,11 +75,11 @@ export function createHyperbolicAdapter(
     // Price is dynamic — only available after the 402 challenge.
     undefined;
 
-  const supports = (model: string): boolean => {
-    if (SUPPORTED_IDS.has(model)) return true;
-    const lower = model.toLowerCase();
-    return lower.includes("llama") || lower.includes("deepseek") || lower.includes("qwen");
-  };
+  // Strict: only the exact ids we list and have verified. Loose substring
+  // matching made Hyperbolic claim models it can't actually serve (e.g. any
+  // "deepseek-*"), which is how a pinned Surplus/other-provider model could get
+  // mis-routed here. Each provider owns exactly its listed ids.
+  const supports = (model: string): boolean => SUPPORTED_IDS.has(model);
 
   async function* stream(
     req: ProviderRequest,
@@ -134,8 +129,6 @@ export function createHyperbolicAdapter(
       );
     }
 
-    const requestId = crypto.randomUUID();
-
     // Non-streaming: Hyperbolic's x402 endpoint returns HTTP 500 on stream:true
     // (it errors before issuing the 402 challenge). We request the full response
     // and re-chunk it into word-level deltas below for a streaming UX.
@@ -147,30 +140,30 @@ export function createHyperbolicAdapter(
       ...(req.maxTokens != null ? { max_tokens: req.maxTokens } : {}),
     });
 
-    let response: Response;
-    try {
-      response = await activeFetch(cfg.hyperbolic.url, {
+    // Safe retry: only re-signs on a pre-settlement 402 payment-verification
+    // failure (concurrent terminals sharing the wallet). Upstream 5xx are NOT
+    // retried — they can occur after settlement, so retrying could double-charge.
+    const attempt = await fetchWithX402Retry(() =>
+      activeFetch(cfg.hyperbolic.url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Request-ID": requestId,
+          "X-Request-ID": crypto.randomUUID(),
         },
         body,
         signal: req.signal,
-      });
-    } catch (err) {
-      yield { type: "error", error: `Hyperbolic fetch failed: ${String(err)}` };
-      return;
-    }
+      }),
+      { signal: req.signal },
+    );
 
-    if (!response.ok) {
-      const errText = await response.text().catch(() => "(no body)");
+    if (!attempt.ok || !attempt.response) {
       yield {
         type: "error",
-        error: `Hyperbolic HTTP ${response.status}: ${errText}`,
+        error: `Hyperbolic HTTP ${attempt.status ?? 0}: ${attempt.errorText ?? "request failed"}`,
       };
       return;
     }
+    const response = attempt.response;
 
     let text = "";
     let inputTokens: number | undefined;

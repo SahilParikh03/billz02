@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { createSurplusAdapter, SURPLUS_FLAT_USDC_PER_CALL } from "./surplus";
+import { createSurplusAdapter, SURPLUS_FLAT_USDC_PER_CALL, normalizeSurplus402 } from "./surplus";
 import type { AppConfig, CompletionResult } from "@/lib/types";
 import type { SurplusDeps } from "./surplus";
 
@@ -108,11 +108,12 @@ async function collectEvents(
 describe("surplus adapter", () => {
   // ── Static metadata ─────────────────────────────────────────────────────────
 
-  it("models() includes the live Surplus gpt ids with expected tags", () => {
+  it("models() includes the advertised Surplus ids with expected tags", () => {
     const adapter = createSurplusAdapter(MOCK_CFG);
     const ids = adapter.models().map((m) => m.id);
     expect(ids).toContain("gpt-4o-mini");
     expect(ids).toContain("gpt-5.2");
+    expect(ids).toContain("deepseek-v3.2");
     const mini = adapter.models().find((m) => m.id === "gpt-4o-mini");
     expect(mini?.tags).toContain("chat");
   });
@@ -123,21 +124,19 @@ describe("surplus adapter", () => {
     expect(adapter.priceFor("any-model")).toBeUndefined();
   });
 
-  it("supports() matches known IDs", () => {
+  it("supports() matches exactly the advertised IDs (strict — no substring)", () => {
     const adapter = createSurplusAdapter(MOCK_CFG);
     expect(adapter.supports("gpt-4o-mini")).toBe(true);
     expect(adapter.supports("gpt-5.2")).toBe(true);
+    expect(adapter.supports("deepseek-v3.2")).toBe(true);
   });
 
-  it("supports() matches 'gpt' substring", () => {
+  it("supports() rejects ids we don't advertise (even Surplus-real ones)", () => {
     const adapter = createSurplusAdapter(MOCK_CFG);
-    expect(adapter.supports("gpt-4o")).toBe(true);
-    expect(adapter.supports("gpt-5.2-pro")).toBe(true);
-    expect(adapter.supports("GPT-ANYTHING")).toBe(true);
-  });
-
-  it("supports() rejects unrelated models", () => {
-    const adapter = createSurplusAdapter(MOCK_CFG);
+    // Strict matching: substrings and unlisted Surplus models are NOT claimed,
+    // so the router never mis-routes a pinned model to the wrong provider.
+    expect(adapter.supports("gpt-4o")).toBe(false);
+    expect(adapter.supports("gpt-5.2-pro")).toBe(false);
     expect(adapter.supports("llama-3.3-70b")).toBe(false);
     expect(adapter.supports("claude-opus-4")).toBe(false);
     expect(adapter.supports("deepseek-v3")).toBe(false);
@@ -392,5 +391,97 @@ describe("surplus adapter", () => {
 
   it("SURPLUS_FLAT_USDC_PER_CALL exported constant equals 0.003306", () => {
     expect(SURPLUS_FLAT_USDC_PER_CALL).toBe(0.003306);
+  });
+});
+
+// ── normalizeSurplus402: rewrite Surplus's x402 v2 challenge into the canonical
+//    shape x402-fetch 1.2.0 can parse (the fix for "all providers failed") ──────
+
+describe("normalizeSurplus402", () => {
+  // A faithful copy of a real Surplus 402 body: top-level resource, an `exact`
+  // entry using `amount`/CAIP-2 network and no per-entry resource fields, plus a
+  // non-standard `upto` entry that the x402 schema must never see.
+  const SURPLUS_402_BODY = {
+    x402Version: 2,
+    error: { message: "Payment required", type: "payment_required" },
+    resource: {
+      url: "https://www.surplusintelligence.ai/x402/api/inference/v1/chat/completions",
+      description: "Surplus Intelligence inference.",
+      mimeType: "application/json",
+    },
+    accepts: [
+      {
+        scheme: "exact",
+        network: "eip155:8453",
+        asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        amount: "3302",
+        payTo: "0x8581784D3E598cCa3482375CFF2409Ac9DD8c402",
+        maxTimeoutSeconds: 120,
+        extra: { name: "USD Coin", version: "2" },
+      },
+      {
+        scheme: "upto",
+        network: "eip155:8453",
+        asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        amount: "3302",
+        payTo: "0x8581784D3E598cCa3482375CFF2409Ac9DD8c402",
+        maxTimeoutSeconds: 120,
+        extra: { name: "USD Coin", version: "2" },
+      },
+    ],
+  };
+
+  function base402Fetch(): typeof fetch {
+    return vi.fn(async () =>
+      new Response(JSON.stringify(SURPLUS_402_BODY), {
+        status: 402,
+        headers: { "content-type": "application/json" },
+      }),
+    ) as unknown as typeof fetch;
+  }
+
+  it("produces accepts entries that pass x402-fetch's PaymentRequirementsSchema", async () => {
+    const { PaymentRequirementsSchema } = await import("x402/types");
+    const wrapped = normalizeSurplus402(base402Fetch());
+    const res = await wrapped("https://surplus.example/chat", { method: "POST" });
+    const body = await res.json();
+
+    // The non-standard "upto" entry must be dropped (schema only allows "exact").
+    expect(body.accepts).toHaveLength(1);
+    // Every remaining entry must parse cleanly (this throws on any field mismatch).
+    for (const a of body.accepts) {
+      expect(() => PaymentRequirementsSchema.parse(a)).not.toThrow();
+    }
+  });
+
+  it("maps amount→maxAmountRequired, CAIP-2→short network, and lifts resource fields per-entry", async () => {
+    const wrapped = normalizeSurplus402(base402Fetch());
+    const res = await wrapped("https://surplus.example/chat", { method: "POST" });
+    const { accepts } = await res.json();
+    const entry = accepts[0];
+
+    expect(entry.scheme).toBe("exact");
+    expect(entry.network).toBe("base");
+    expect(entry.maxAmountRequired).toBe("3302");
+    expect(entry.resource).toBe(SURPLUS_402_BODY.resource.url);
+    expect(entry.description).toBe(SURPLUS_402_BODY.resource.description);
+    expect(entry.mimeType).toBe("application/json");
+  });
+
+  it("preserves the original x402Version (2) so Surplus gets the payment it expects", async () => {
+    const wrapped = normalizeSurplus402(base402Fetch());
+    const res = await wrapped("https://surplus.example/chat", { method: "POST" });
+    const body = await res.json();
+    expect(body.x402Version).toBe(2);
+  });
+
+  it("passes non-402 responses through untouched", async () => {
+    const okFetch = vi.fn(async () =>
+      new Response("hi", { status: 200 }),
+    ) as unknown as typeof fetch;
+    const wrapped = normalizeSurplus402(okFetch);
+    const res = await wrapped("https://surplus.example/chat");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("hi");
   });
 });

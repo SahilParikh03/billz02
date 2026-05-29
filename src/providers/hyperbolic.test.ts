@@ -119,7 +119,7 @@ describe("hyperbolic adapter", () => {
 
     let done: CompletionResult | undefined;
     for await (const ev of adapter.stream({
-      model: "deepseek-ai/DeepSeek-V3-0324",
+      model: "meta-llama/Llama-3.3-70B-Instruct",
       messages: [{ role: "user", content: "q" }],
     })) {
       if (ev.type === "done") done = ev.result;
@@ -281,12 +281,12 @@ describe("hyperbolic adapter", () => {
     expect(errorEvent).toContain("network timeout");
   });
 
-  it("models() returns the static list of live Hyperbolic ids", () => {
+  it("models() returns only Llama-3.3 (DeepSeek endpoints are dead — see adapter note)", () => {
     const adapter = createHyperbolicAdapter(MOCK_CFG);
     const ids = adapter.models().map((m) => m.id);
     expect(ids).toContain("meta-llama/Llama-3.3-70B-Instruct");
-    expect(ids).toContain("deepseek-ai/DeepSeek-V3-0324");
-    expect(ids).toContain("deepseek-ai/DeepSeek-R1");
+    expect(ids).not.toContain("deepseek-ai/DeepSeek-V3-0324");
+    expect(ids).not.toContain("deepseek-ai/DeepSeek-R1");
   });
 
   it("priceFor() returns undefined (dynamic pricing)", () => {
@@ -294,18 +294,15 @@ describe("hyperbolic adapter", () => {
     expect(adapter.priceFor("meta-llama/Llama-3.3-70B-Instruct")).toBeUndefined();
   });
 
-  it("supports() matches known IDs and substring patterns", () => {
+  it("supports() is strict — only the exact advertised id, no substring matching", () => {
     const adapter = createHyperbolicAdapter(MOCK_CFG);
     expect(adapter.supports("meta-llama/Llama-3.3-70B-Instruct")).toBe(true);
-    expect(adapter.supports("deepseek-ai/DeepSeek-V3-0324")).toBe(true);
-    expect(adapter.supports("deepseek-ai/DeepSeek-R1")).toBe(true);
-    // Substring matches
-    expect(adapter.supports("llama-3.2-3b")).toBe(true);
-    expect(adapter.supports("deepseek-r1")).toBe(true);
-    expect(adapter.supports("Qwen/Qwen3-Coder-480B-A35B-Instruct")).toBe(true);
-    // Unknown
+    // No longer claims models it can't actually serve (this caused mis-routing).
+    expect(adapter.supports("deepseek-ai/DeepSeek-V3-0324")).toBe(false);
+    expect(adapter.supports("deepseek-ai/DeepSeek-R1")).toBe(false);
+    expect(adapter.supports("llama-3.2-3b")).toBe(false);
+    expect(adapter.supports("Qwen/Qwen3-Coder-480B-A35B-Instruct")).toBe(false);
     expect(adapter.supports("gpt-4o")).toBe(false);
-    expect(adapter.supports("claude-opus-4")).toBe(false);
   });
 
   it("usdcCharged computation: 50000 base units = 0.05 USDC", () => {

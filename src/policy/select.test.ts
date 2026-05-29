@@ -51,30 +51,44 @@ describe("route() — mock mode", () => {
 });
 
 describe("route() — live mode rule branches", () => {
-  it("falls through to venice for generic chat (no llama/code hint)", () => {
+  it("routes generic chat to an active provider (hyperbolic when no Venice key)", () => {
     const d = route(liveCfg(), {
       messages: [{ role: "user", content: "tell me a story" }],
     });
-    // Venice and Hyperbolic stubs both return supports()=false, so we hit the
-    // final fallback which defaults to venice.
-    expect(d.provider).toBe("venice");
+    // Venice is gated out of the live set unless VENICE_API_KEY is set, so the
+    // weak-tier pick falls to the first active provider (hyperbolic).
+    expect(d.provider).toBe("hyperbolic");
   });
 
-  it("routes to hyperbolic when model contains 'llama'", () => {
+  it("routes an exact Hyperbolic model id to hyperbolic", () => {
     const d = route(liveCfg(), {
-      model: "llama-3-70b",
+      model: "meta-llama/Llama-3.3-70B-Instruct",
       messages: [{ role: "user", content: "hello" }],
     });
     expect(d.provider).toBe("hyperbolic");
+    expect(d.model).toBe("meta-llama/Llama-3.3-70B-Instruct");
     expect(d.reason).toMatch(/hyperbolic/i);
   });
 
-  it("routes to hyperbolic when model contains 'code'", () => {
+  it("routes an exact Surplus model id to surplus", () => {
+    const d = route(liveCfg(), {
+      model: "deepseek-v3.2",
+      messages: [{ role: "user", content: "write a function" }],
+    });
+    expect(d.provider).toBe("surplus");
+    expect(d.model).toBe("deepseek-v3.2");
+  });
+
+  it("does NOT honor an unadvertised model id — falls through to tier/cost routing", () => {
+    // Strict supports(): a made-up id matches no provider, so the explicit-model
+    // shortcut is skipped and the router scores candidates instead. (Pre-fix,
+    // loose substring matching wrongly pinned this to a provider.)
     const d = route(liveCfg(), {
       model: "deepseek-coder",
       messages: [{ role: "user", content: "write a function" }],
     });
-    expect(d.provider).toBe("hyperbolic");
+    expect(d.reason).not.toMatch(/explicit model/i);
+    expect(["hyperbolic", "surplus", "venice", "mock"]).toContain(d.provider);
   });
 
   // Stage 1 routes by difficulty/tier/cost rather than provider keywords.

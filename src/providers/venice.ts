@@ -1,27 +1,25 @@
 /**
  * Venice provider adapter — credit-balance model, OpenAI-compatible.
  *
- * ─── PAYMENT MODEL (honest summary) ───────────────────────────────────────────
- * Venice funds an *internal credit balance* via a separate top-up step, not via
- * per-inference x402. The PRODUCTION path is:
- *   1. POST ${baseUrl}/x402/top-up carrying an `X-402-Payment` header (a signed
- *      USDC-on-Base EIP-3009 authorization built with `x402-fetch`).
- *   2. All inference requests authenticate with an `X-Sign-In-With-X` (SIWE)
- *      header — a non-standard Venice extension of the canonical x402 scheme.
- *      (Source: venice.ai/blog/venice-now-supports-x402; billz_prd.md §2)
+ * ─── PAYMENT MODEL (verified live 2026-05-29) ─────────────────────────────────
+ * Venice is NOT pay-per-call. Probing `${baseUrl}/chat/completions` with no auth
+ * returns an x402 **v2** 402 "Authentication required" whose `accepts[]` asks for
+ * a flat **$10.00 USDC** (amount "10000000" on Base eip155:8453, or Solana). That
+ * is a *credit top-up*, not a per-inference charge: you pay $10 once to fund a
+ * balance, then authenticate inference with a SIWE handshake and draw it down.
  *
- * TODO (Stage 1): implement the full top-up + SIWE handshake.
- *   - top-up:  POST `${cfg.venice.baseUrl}/x402/top-up`
- *              headers: { 'X-402-Payment': <signed USDC auth from getSigner()> }
- *   - inference: add `X-Sign-In-With-X: <session-scoped SIWE message + signature>`
- *                to every chat/completions request.
+ * Two ways to use Venice:
+ *   1. **Bearer key (IMPLEMENTED, ready):** set `VENICE_API_KEY` and inference
+ *      works immediately via `Authorization: Bearer`. This is the supported path.
+ *   2. **x402 top-up + SIWE (NOT IMPLEMENTED):** POST `${baseUrl}/x402/top-up`
+ *      with a signed USDC EIP-3009 auth, then send `X-Sign-In-With-X` (SIWE) on
+ *      each call. Blocked here on (a) the $10 top-up exceeding our per-call cap
+ *      and the test wallet balance, and (b) the unbuilt handshake. Out of scope
+ *      until funded + the credit flow is built.
  *
- * STAGE 0 PATH (what we do now):
- *   - If VENICE_API_KEY is set in the environment, use it as a Bearer token.
- *     This covers the simplest live path for developers who already have a key.
- *   - If VENICE_API_KEY is absent, requests are sent without auth (the server
- *     will likely 401 — acceptable for Stage 0 testnet where we focus on
- *     Hyperbolic for the real x402 path and Venice for the structure).
+ * GATING: `getProviders` only adds Venice when `VENICE_API_KEY` is present, so
+ * without a key Venice is absent from routing and the model list entirely — it
+ * never 402s into failover. With a key, the Bearer path below handles everything.
  *
  * paymentMode is always "credit-balance" — no per-call on-chain tx.
  * ─────────────────────────────────────────────────────────────────────────────
