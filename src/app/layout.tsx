@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "BILLZ — AI Inference Router",
+  title: "BEAMR — AI Inference Router",
   description:
     "Consumer-facing AI inference router. Pay model providers over x402 — gasless USDC on Base. Every call settled on-chain, in real-time.",
 };

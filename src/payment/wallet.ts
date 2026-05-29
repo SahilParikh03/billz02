@@ -2,13 +2,13 @@ import type { Signer } from "x402/types";
 import { createSigner } from "x402-fetch";
 import type { AppConfig } from "@/lib/types";
 
-/** Default name for the CDP server account BILLZ creates/reuses across cold starts. */
-const CDP_WALLET_NAME = process.env.CDP_WALLET_NAME || "billz-router";
+/** Default name for the CDP server account BEAMR creates/reuses across cold starts. */
+const CDP_WALLET_NAME = process.env.CDP_WALLET_NAME || "beamr-router";
 
 // ── Provider selection ──────────────────────────────────────────────────────
 
 /**
- * Reads BILLZ_WALLET_PROVIDER from the environment and returns the normalised
+ * Reads BEAMR_WALLET_PROVIDER from the environment and returns the normalised
  * provider name. Defaults to "key" when the variable is absent or empty.
  *
  * Values:
@@ -17,7 +17,7 @@ const CDP_WALLET_NAME = process.env.CDP_WALLET_NAME || "billz-router";
  *           STUB: requires @coinbase/cdp-sdk which is not yet installed.
  */
 export function walletProvider(): "key" | "cdp" {
-  const raw = process.env.BILLZ_WALLET_PROVIDER ?? "";
+  const raw = process.env.BEAMR_WALLET_PROVIDER ?? "";
   if (raw === "cdp") return "cdp";
   return "key";
 }
@@ -44,7 +44,7 @@ const cdpSignerCache = new Map<string, Signer>();
 
 /**
  * Returns the x402 Signer for the given config, dispatching on
- * BILLZ_WALLET_PROVIDER (default "key").
+ * BEAMR_WALLET_PROVIDER (default "key").
  *
  * Guards:
  * - Must never be called in mock mode (the mock adapter does no settlement).
@@ -173,5 +173,5 @@ export function resetCdpSignerCache(): void {
 //
 // There is no EVM RPC URL field — EVM RPC selection is baked into createSigner
 // via viem's chain config, not via X402Config. Providing a getX402Config helper
-// that forwards BILLZ_RPC_URL would therefore be a no-op for EVM networks.
+// that forwards BEAMR_RPC_URL would therefore be a no-op for EVM networks.
 // Wiring it in for SVM is out of scope here; skip to avoid misleading callers.

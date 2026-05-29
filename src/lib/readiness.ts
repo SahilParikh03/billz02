@@ -1,7 +1,7 @@
 /**
  * Mainnet readiness assessment.
  *
- * Answers one operational question: "if BILLZ took a real mainnet request right
+ * Answers one operational question: "if BEAMR took a real mainnet request right
  * now, would it settle — and what's risky about the current config?" It inspects
  * the live environment (provider mode, wallet provider + creds, facilitator,
  * shared store reachability) and returns a report with hard `blockers` (which
@@ -48,7 +48,7 @@ export async function assessReadiness(cfg: AppConfig): Promise<ReadinessReport> 
   const warnings: string[] = [];
 
   if (cfg.providerMode !== "live") {
-    blockers.push("BILLZ_PROVIDER_MODE is not 'live' (running in mock mode)");
+    blockers.push("BEAMR_PROVIDER_MODE is not 'live' (running in mock mode)");
   }
 
   if (!walletConfigured) {
@@ -71,7 +71,7 @@ export async function assessReadiness(cfg: AppConfig): Promise<ReadinessReport> 
   }
   if (mainnet && provider === "key") {
     warnings.push(
-      "using a raw private-key hot wallet on mainnet; set BILLZ_WALLET_PROVIDER=cdp for MPC custody + spend caps",
+      "using a raw private-key hot wallet on mainnet; set BEAMR_WALLET_PROVIDER=cdp for MPC custody + spend caps",
     );
   }
   if (mainnet && facKind === "public") {
@@ -80,7 +80,7 @@ export async function assessReadiness(cfg: AppConfig): Promise<ReadinessReport> 
     );
   }
   if (!mainnet && cfg.providerMode === "live") {
-    warnings.push(`live mode on testnet '${cfg.network}' — switch BILLZ_NETWORK=base for mainnet`);
+    warnings.push(`live mode on testnet '${cfg.network}' — switch BEAMR_NETWORK=base for mainnet`);
   }
 
   return {

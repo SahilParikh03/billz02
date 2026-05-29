@@ -3,7 +3,7 @@ import { resolvePolicyMode, policyParams } from "./modes";
 
 describe("policy modes", () => {
   afterEach(() => {
-    delete process.env.BILLZ_POLICY_MODE;
+    delete process.env.BEAMR_POLICY_MODE;
   });
 
   it("defaults to balanced", () => {
@@ -15,7 +15,7 @@ describe("policy modes", () => {
   });
 
   it("ignores an invalid override and falls back to the env mode", () => {
-    process.env.BILLZ_POLICY_MODE = "frugal";
+    process.env.BEAMR_POLICY_MODE = "frugal";
     expect(resolvePolicyMode("garbage")).toBe("frugal");
   });
 

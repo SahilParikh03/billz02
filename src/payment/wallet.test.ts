@@ -16,11 +16,11 @@ const BASE_CFG: Omit<AppConfig, "providerMode" | "walletPrivateKey"> = {
 };
 
 /**
- * Save and restore BILLZ_WALLET_PROVIDER around each test so env mutations
+ * Save and restore BEAMR_WALLET_PROVIDER around each test so env mutations
  * don't leak across cases.
  */
 afterEach(() => {
-  delete process.env.BILLZ_WALLET_PROVIDER;
+  delete process.env.BEAMR_WALLET_PROVIDER;
   delete process.env.CDP_API_KEY_ID;
   delete process.env.CDP_API_KEY_SECRET;
   delete process.env.CDP_WALLET_SECRET;
@@ -30,22 +30,22 @@ afterEach(() => {
 
 describe("walletProvider()", () => {
   it("returns 'key' by default when env var is absent", () => {
-    delete process.env.BILLZ_WALLET_PROVIDER;
+    delete process.env.BEAMR_WALLET_PROVIDER;
     expect(walletProvider()).toBe("key");
   });
 
   it("returns 'key' when env var is empty string", () => {
-    process.env.BILLZ_WALLET_PROVIDER = "";
+    process.env.BEAMR_WALLET_PROVIDER = "";
     expect(walletProvider()).toBe("key");
   });
 
   it("returns 'cdp' when env var is 'cdp'", () => {
-    process.env.BILLZ_WALLET_PROVIDER = "cdp";
+    process.env.BEAMR_WALLET_PROVIDER = "cdp";
     expect(walletProvider()).toBe("cdp");
   });
 
   it("returns 'key' for any unrecognised value (safe default)", () => {
-    process.env.BILLZ_WALLET_PROVIDER = "unknown-provider";
+    process.env.BEAMR_WALLET_PROVIDER = "unknown-provider";
     expect(walletProvider()).toBe("key");
   });
 });
@@ -54,7 +54,7 @@ describe("walletProvider()", () => {
 
 describe("payment/wallet.getSigner", () => {
   it("throws in mock mode regardless of provider", async () => {
-    delete process.env.BILLZ_WALLET_PROVIDER; // default "key"
+    delete process.env.BEAMR_WALLET_PROVIDER; // default "key"
     const cfg: AppConfig = {
       ...BASE_CFG,
       providerMode: "mock",
@@ -64,7 +64,7 @@ describe("payment/wallet.getSigner", () => {
   });
 
   it("throws when walletPrivateKey is absent in live mode (key provider)", async () => {
-    delete process.env.BILLZ_WALLET_PROVIDER; // default "key"
+    delete process.env.BEAMR_WALLET_PROVIDER; // default "key"
     const cfg: AppConfig = {
       ...BASE_CFG,
       providerMode: "live",
@@ -74,7 +74,7 @@ describe("payment/wallet.getSigner", () => {
   });
 
   it("throws a helpful CDP setup message when provider=cdp and creds are absent", async () => {
-    process.env.BILLZ_WALLET_PROVIDER = "cdp";
+    process.env.BEAMR_WALLET_PROVIDER = "cdp";
     // Ensure no CDP creds leak in from the ambient environment.
     delete process.env.CDP_API_KEY_ID;
     delete process.env.CDP_API_KEY_SECRET;
@@ -88,7 +88,7 @@ describe("payment/wallet.getSigner", () => {
   });
 
   it("CDP error message mentions all three required secrets", async () => {
-    process.env.BILLZ_WALLET_PROVIDER = "cdp";
+    process.env.BEAMR_WALLET_PROVIDER = "cdp";
     delete process.env.CDP_API_KEY_ID;
     const cfg: AppConfig = {
       ...BASE_CFG,

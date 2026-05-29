@@ -37,7 +37,7 @@ import type {
 } from "@/lib/types";
 
 // ── Price table (USD per 1M tokens, input / output) ──────────────────────────
-// Source: docs.venice.ai/overview/pricing as cited in billz_prd.md §2
+// Source: docs.venice.ai/overview/pricing as cited in beamr_prd.md §2
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface VeniceModelEntry extends ModelInfo {

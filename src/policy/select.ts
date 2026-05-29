@@ -10,7 +10,7 @@ import { approxTokens, scoreCandidates } from "./score";
 import { policyParams, resolvePolicyMode } from "./modes";
 
 export interface RouteOpts {
-  /** Per-request policy override (from the X-Billz-Policy header). */
+  /** Per-request policy override (from the X-Beamr-Policy header). */
   policyMode?: string | null;
 }
 

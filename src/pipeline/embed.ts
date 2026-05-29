@@ -12,7 +12,7 @@
  * model download is required. It is the default backend.
  *
  * A higher-quality MiniLM backend ({@link createMiniLmEmbedder}) is selectable
- * via `BILLZ_EMBEDDER=minilm`; {@link getEmbedder} dispatches on the cache
+ * via `BEAMR_EMBEDDER=minilm`; {@link getEmbedder} dispatches on the cache
  * config. Both satisfy the same {@link Embedder} interface, so cache.ts and
  * every call-site are agnostic to which is active.
  */
@@ -128,7 +128,7 @@ export function createLocalEmbedder(dim = 256): Embedder {
 // ── MiniLM backend (@huggingface/transformers) ────────────────────────────────
 
 /** Default sentence-embedding model: all-MiniLM-L6-v2, 384-dimensional. */
-const MINILM_MODEL = process.env.BILLZ_MINILM_MODEL || "Xenova/all-MiniLM-L6-v2";
+const MINILM_MODEL = process.env.BEAMR_MINILM_MODEL || "Xenova/all-MiniLM-L6-v2";
 const MINILM_DIM = 384;
 
 // Minimal structural types for the lazily-imported transformers pipeline, so we
@@ -146,7 +146,7 @@ type FeatureExtractor = (
  * The feature-extraction pipeline is built lazily and memoized on first
  * `embed()` — building it downloads the ONNX model on the first ever call
  * (cached on disk thereafter), so the heavy package and the network fetch only
- * happen when `BILLZ_EMBEDDER=minilm` is actually selected. Mean-pooled +
+ * happen when `BEAMR_EMBEDDER=minilm` is actually selected. Mean-pooled +
  * L2-normalized output, so cosine() behaves identically to the local backend.
  */
 export function createMiniLmEmbedder(model = MINILM_MODEL): Embedder {
@@ -160,9 +160,9 @@ export function createMiniLmEmbedder(model = MINILM_MODEL): Embedder {
           mod = (await import("@huggingface/transformers")) as typeof mod;
         } catch {
           throw new Error(
-            "embed: BILLZ_EMBEDDER=minilm requires @huggingface/transformers. " +
+            "embed: BEAMR_EMBEDDER=minilm requires @huggingface/transformers. " +
               "Install it with `npm install @huggingface/transformers`, or set " +
-              "BILLZ_EMBEDDER=local to use the offline embedder.",
+              "BEAMR_EMBEDDER=local to use the offline embedder.",
           );
         }
         return (await mod.pipeline("feature-extraction", model)) as FeatureExtractor;

@@ -7,7 +7,7 @@
  * - stream (default true): returns text/event-stream SSE, OpenAI chunk format.
  * - stream: false: buffers and returns a JSON ChatCompletion object.
  *
- * Session tracking: body.session_id || X-Billz-Session header || generated id.
+ * Session tracking: body.session_id || X-Beamr-Session header || generated id.
  * Budget exceeded: 402 JSON response BEFORE the stream starts.
  */
 
@@ -40,10 +40,10 @@ export async function POST(request: Request): Promise<Response> {
   const cfg = getConfig();
   const sessionId =
     body.session_id ||
-    request.headers.get("x-billz-session") ||
+    request.headers.get("x-beamr-session") ||
     newId("sess");
-  const userId = request.headers.get("x-billz-user") || sessionId;
-  const policyMode = request.headers.get("x-billz-policy");
+  const userId = request.headers.get("x-beamr-user") || sessionId;
+  const policyMode = request.headers.get("x-beamr-policy");
   const traceId = newId("trace");
   const requestId = newId("chatcmpl");
   const created = Math.floor(Date.now() / 1000);
@@ -76,7 +76,7 @@ export async function POST(request: Request): Promise<Response> {
           { error: { message: event.error, type } },
           {
             status,
-            headers: { "X-Billz-Session": sessionId },
+            headers: { "X-Beamr-Session": sessionId },
           },
         );
       }
@@ -102,7 +102,7 @@ export async function POST(request: Request): Promise<Response> {
         },
       },
       {
-        headers: { "X-Billz-Session": sessionId, "X-Billz-Trace": traceId },
+        headers: { "X-Beamr-Session": sessionId, "X-Beamr-Trace": traceId },
       },
     );
   }
@@ -131,7 +131,7 @@ export async function POST(request: Request): Promise<Response> {
       },
       {
         status: isBudget ? 402 : 500,
-        headers: { "X-Billz-Session": sessionId },
+        headers: { "X-Beamr-Session": sessionId },
       },
     );
   }
@@ -231,8 +231,8 @@ export async function POST(request: Request): Promise<Response> {
   return new Response(stream, {
     headers: {
       ...SSE_HEADERS,
-      "X-Billz-Session": sessionId,
-      "X-Billz-Trace": traceId,
+      "X-Beamr-Session": sessionId,
+      "X-Beamr-Trace": traceId,
     },
   });
 }

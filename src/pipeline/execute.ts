@@ -25,7 +25,7 @@ interface ExecOpts {
   signal?: AbortSignal;
   /** User identity for per-user daily caps; defaults to sessionId. */
   userId?: string;
-  /** Per-request policy override (X-Billz-Policy header). */
+  /** Per-request policy override (X-Beamr-Policy header). */
   policyMode?: string | null;
 }
 

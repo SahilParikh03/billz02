@@ -1,12 +1,12 @@
-# BILLZ — Handoff / Source of Truth
+# BEAMR — Handoff / Source of Truth
 
-> This file is the canonical reference for what BILLZ is, how it's built, and where
-> the work stands. Read it first. The deeper research dossier is `../billz_prd.md`;
+> This file is the canonical reference for what BEAMR is, how it's built, and where
+> the work stands. Read it first. The deeper research dossier is `../beamr_prd.md`;
 > testnet bring-up is `SETUP.md`; mainnet go-live is `RUNBOOK.md`.
 
 ---
 
-## 1. What BILLZ is
+## 1. What BEAMR is
 
 A **consumer-facing AI inference router** that pays model providers **per call** over
 the **x402 protocol** — gasless USDC on **Base**. You talk to it like any chat app;
@@ -87,11 +87,11 @@ src/
     execute.ts      ← the spine (section 2 above)
     log.ts          ← structured per-call log + JSONL replay
   components/
-    BillzApp.tsx, ChatPanel, SpendFeed, Header, useChat/useSession/useSpendFeed/…
+    BeamrApp.tsx, ChatPanel, SpendFeed, Header, useChat/useSession/useSpendFeed/…
     cdp/            ← embedded-wallet UI (CdpProvider, CdpRoot, CdpAccountSync,
                       AuthMenu, account.ts/useAccount)
   app/
-    page.tsx        ← <CdpProvider><BillzApp/></CdpProvider>
+    page.tsx        ← <CdpProvider><BeamrApp/></CdpProvider>
     api/v1/chat/completions/route.ts   ← OpenAI-compatible entrypoint
     api/{feed,feedback,leaderboard,models,health,readiness,account}/route.ts
 scripts/train.mjs   ← offline: feedback.jsonl → leaderboard + dataset export
@@ -107,7 +107,7 @@ scripts/train.mjs   ← offline: feedback.jsonl → leaderboard + dataset export
   scoring → two-layer semantic cache. A/B harness (`npm run eval`) shows **~71%**
   cost reduction vs always-strong in mock mode.
 - **Stage 2** — pluggable async `Store` (in-memory | Upstash Redis) backing the
-  budget; per-user daily caps (`X-Billz-User`); **Surplus Intelligence** as a 3rd
+  budget; per-user daily caps (`X-Beamr-User`); **Surplus Intelligence** as a 3rd
   live provider; wallet-provider abstraction (`key` | `cdp`). Budget fns are async.
 - **Stage 3** — feedback→routing learning loop: thumbs (`POST /api/feedback`) →
   learned quality priors (`lib/quality.ts`) blended into scoring; routing context
@@ -126,15 +126,15 @@ scripts/train.mjs   ← offline: feedback.jsonl → leaderboard + dataset export
   (`@coinbase/cdp-hooks`/`-core`). `CdpProvider` degrades to anonymous when
   `NEXT_PUBLIC_CDP_PROJECT_ID` is unset; else dynamically (ssr:false) mounts the SDK.
   `CdpAccountSync` bridges the SDK onto an `Account` context (`useAccount()`);
-  `AuthMenu` runs email→OTP→signed-in. Signed-in address → `X-Billz-User` → per-user
+  `AuthMenu` runs email→OTP→signed-in. Signed-in address → `X-Beamr-User` → per-user
   budget + feedback. Server `lib/credit.ts` is a store-backed, idempotent welcome-credit
   ledger; `POST/GET /api/account` grants/reads the one-time $1; `executeChat` gates
   wallet users on credit and depletes per call. Anonymous session users untouched.
 - **MiniLM swap** (code-complete + **live-verified**) — semantic-cache embedder is
-  pluggable via `BILLZ_EMBEDDER` (`local` default | `minilm` = all-MiniLM-L6-v2 384-d
+  pluggable via `BEAMR_EMBEDDER` (`local` default | `minilm` = all-MiniLM-L6-v2 384-d
   via `@huggingface/transformers`, an optionalDependency + `serverExternalPackages`).
   Verified live this env: 384-d, near-dup cosine 0.957 / unrelated −0.066, and a
-  near-dup prompt served from cache at sim 0.96 end-to-end. Opt-in test: `BILLZ_TEST_MINILM=1`.
+  near-dup prompt served from cache at sim 0.96 end-to-end. Opt-in test: `BEAMR_TEST_MINILM=1`.
 - **Go-live runbook** — `RUNBOOK.md`: provisioning (CDP wallet+facilitator+embedded,
   Redis), full mainnet env, fund router wallet, deploy gated on `/api/readiness`,
   canary, monitoring, kill-switch/rollback, incident playbook, cost/limits.
@@ -147,25 +147,25 @@ All config is read at **request time** by `getConfig()` (`src/lib/config.ts`) �
 does not bundle runtime config. Defaults shown.
 
 **Core**
-- `BILLZ_PROVIDER_MODE` — `mock` (default, fully offline) | `live` (Venice+Hyperbolic+Surplus)
-- `BILLZ_NETWORK` — `base-sepolia` (default) | `base`
-- `BILLZ_SESSION_BUDGET_USD` — `5`
-- `BILLZ_USER_DAILY_BUDGET_USD` — `0` (0 disables the per-user/day cap)
-- `BILLZ_WELCOME_CREDIT_USD` — `1` (one-time credit for new signed-in wallet users)
-- `BILLZ_MAX_PAYMENT_PER_CALL_USD` — `0.1`
+- `BEAMR_PROVIDER_MODE` — `mock` (default, fully offline) | `live` (Venice+Hyperbolic+Surplus)
+- `BEAMR_NETWORK` — `base-sepolia` (default) | `base`
+- `BEAMR_SESSION_BUDGET_USD` — `5`
+- `BEAMR_USER_DAILY_BUDGET_USD` — `0` (0 disables the per-user/day cap)
+- `BEAMR_WELCOME_CREDIT_USD` — `1` (one-time credit for new signed-in wallet users)
+- `BEAMR_MAX_PAYMENT_PER_CALL_USD` — `0.1`
 
 **Routing / cache**
-- `BILLZ_DIFFICULTY_THRESHOLD` — `0.5` · `BILLZ_LATENCY_WEIGHT` — `0` · `BILLZ_QUALITY_WEIGHT` — `0`
-- `BILLZ_CACHE_ENABLED` — `true` · `BILLZ_CACHE_SIM_THRESHOLD` — `0.83` ·
-  `BILLZ_CACHE_TTL_MS` — `86400000` · `BILLZ_CACHE_MAX_ENTRIES` — `500`
-- `BILLZ_EMBEDDER` — `local` (default) | `minilm` · `BILLZ_MINILM_MODEL` — `Xenova/all-MiniLM-L6-v2`
+- `BEAMR_DIFFICULTY_THRESHOLD` — `0.5` · `BEAMR_LATENCY_WEIGHT` — `0` · `BEAMR_QUALITY_WEIGHT` — `0`
+- `BEAMR_CACHE_ENABLED` — `true` · `BEAMR_CACHE_SIM_THRESHOLD` — `0.83` ·
+  `BEAMR_CACHE_TTL_MS` — `86400000` · `BEAMR_CACHE_MAX_ENTRIES` — `500`
+- `BEAMR_EMBEDDER` — `local` (default) | `minilm` · `BEAMR_MINILM_MODEL` — `Xenova/all-MiniLM-L6-v2`
 
 **Payment / providers**
 - `WALLET_PRIVATE_KEY` — `0x…` throwaway hot wallet (key signer path)
 - `X402_FACILITATOR_URL` — `https://x402.org/facilitator` (public default)
-- `BILLZ_WALLET_PROVIDER` — `key` | `cdp` · `BILLZ_FALLBACK_FACILITATORS` — comma-separated
+- `BEAMR_WALLET_PROVIDER` — `key` | `cdp` · `BEAMR_FALLBACK_FACILITATORS` — comma-separated
 - CDP server wallet: `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET`,
-  `CDP_WALLET_NAME` (default `billz-router`)
+  `CDP_WALLET_NAME` (default `beamr-router`)
 - `VENICE_API_KEY` (interim Bearer), `VENICE_BASE_URL`, `HYPERBOLIC_X402_URL`
 
 **Embedded wallets (client)**
@@ -180,7 +180,7 @@ does not bundle runtime config. Defaults shown.
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /api/v1/chat/completions` | OpenAI-compatible chat (SSE). Headers: `X-Billz-Session`, `X-Billz-User`, `X-Billz-Policy`, `X-Billz-Trace` |
+| `POST /api/v1/chat/completions` | OpenAI-compatible chat (SSE). Headers: `X-Beamr-Session`, `X-Beamr-User`, `X-Beamr-Policy`, `X-Beamr-Trace` |
 | `GET /api/feed` | Live spend feed (SSE) |
 | `POST /api/feedback` | Thumbs up/down by `traceId` |
 | `GET /api/leaderboard` | Quality-per-dollar leaderboard |
@@ -197,9 +197,9 @@ does not bundle runtime config. Defaults shown.
 |---|---|
 | `npm run dev` | Dev server (Turbopack). **Port 3000 is held by an unrelated app on this box — use `PORT=3100`** |
 | `npm run build` / `npm start` | Production build / serve |
-| `npm test` | Vitest — **198 tests** (mock mode), +1 opt-in live MiniLM (`BILLZ_TEST_MINILM=1`) |
+| `npm test` | Vitest — **198 tests** (mock mode), +1 opt-in live MiniLM (`BEAMR_TEST_MINILM=1`) |
 | `npm run eval` | Router-vs-always-strong A/B (cost-per-query) → ~71% cheaper |
-| `npm run train` | `.billz/feedback.jsonl` → leaderboard + dataset export |
+| `npm run train` | `.beamr/feedback.jsonl` → leaderboard + dataset export |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
 

@@ -24,7 +24,7 @@ function cfg(overrides: Partial<AppConfig> = {}): AppConfig {
 
 beforeEach(() => {
   resetStore();
-  delete process.env.BILLZ_WALLET_PROVIDER;
+  delete process.env.BEAMR_WALLET_PROVIDER;
   delete process.env.CDP_API_KEY_ID;
   delete process.env.CDP_API_KEY_SECRET;
   delete process.env.CDP_WALLET_SECRET;
@@ -34,7 +34,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resetStore();
-  delete process.env.BILLZ_WALLET_PROVIDER;
+  delete process.env.BEAMR_WALLET_PROVIDER;
   delete process.env.CDP_API_KEY_ID;
   delete process.env.CDP_API_KEY_SECRET;
   delete process.env.CDP_WALLET_SECRET;
@@ -68,7 +68,7 @@ describe("assessReadiness", () => {
   });
 
   it("live + cdp provider without creds is blocked", async () => {
-    process.env.BILLZ_WALLET_PROVIDER = "cdp";
+    process.env.BEAMR_WALLET_PROVIDER = "cdp";
     const r = await assessReadiness(cfg({ walletPrivateKey: undefined }));
     expect(r.liveReady).toBe(false);
     expect(r.blockers.join(" ")).toMatch(/CDP wallet creds incomplete/);
@@ -76,7 +76,7 @@ describe("assessReadiness", () => {
   });
 
   it("live + cdp provider + full creds selects the CDP facilitator and is live-ready", async () => {
-    process.env.BILLZ_WALLET_PROVIDER = "cdp";
+    process.env.BEAMR_WALLET_PROVIDER = "cdp";
     process.env.CDP_API_KEY_ID = "id";
     process.env.CDP_API_KEY_SECRET = "secret";
     process.env.CDP_WALLET_SECRET = "wallet-secret";
@@ -99,6 +99,6 @@ describe("assessReadiness", () => {
   it("live on testnet warns to switch the network", async () => {
     const r = await assessReadiness(cfg({ network: "base-sepolia" }));
     expect(r.mainnet).toBe(false);
-    expect(r.warnings.join(" ")).toMatch(/switch BILLZ_NETWORK=base/);
+    expect(r.warnings.join(" ")).toMatch(/switch BEAMR_NETWORK=base/);
   });
 });

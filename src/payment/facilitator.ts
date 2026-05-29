@@ -9,8 +9,8 @@ import type { AppConfig } from "@/lib/types";
  * In the buyer flow, the *resource server* (Hyperbolic / Surplus) runs verify
  * /settle against its own facilitator, so `x402-fetch` only signs on our side
  * and this module's job is (a) decoding settlement receipts and (b) producing
- * the x402 `FacilitatorConfig` BILLZ uses whenever it acts as the settling
- * party — e.g. a future BILLZ paywall that charges its own users, or a
+ * the x402 `FacilitatorConfig` BEAMR uses whenever it acts as the settling
+ * party — e.g. a future BEAMR paywall that charges its own users, or a
  * server-side pre-settlement verify. Centralizing it here means the mainnet
  * switch (public → CDP facilitator) and multi-facilitator failover live in one
  * place.
@@ -37,7 +37,7 @@ export function facilitatorKind(): "cdp" | "public" {
 // ── Facilitator config ──────────────────────────────────────────────────────
 
 /**
- * The x402 `FacilitatorConfig` BILLZ should settle through.
+ * The x402 `FacilitatorConfig` BEAMR should settle through.
  *
  * Returns the CDP-hosted config (with JWT `createAuthHeaders` derived from
  * `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET`) when those creds are present, else a
@@ -63,7 +63,7 @@ export function getFacilitatorConfig(cfg: AppConfig): FacilitatorConfig {
  * SPOF, so on mainnet we want to fall back to alternates. Order:
  *   1. the active facilitator (CDP when configured, else the primary url)
  *   2. the primary public url (when CDP is primary, this is the first fallback)
- *   3. any extra urls from BILLZ_FALLBACK_FACILITATORS (comma-separated)
+ *   3. any extra urls from BEAMR_FALLBACK_FACILITATORS (comma-separated)
  *
  * De-duplicated by url. Callers iterate this on settlement failure.
  */
@@ -75,7 +75,7 @@ export function facilitatorChain(cfg: AppConfig): FacilitatorConfig[] {
     chain.push({ url: cfg.facilitatorUrl as Resource });
   }
 
-  const extra = (process.env.BILLZ_FALLBACK_FACILITATORS ?? "")
+  const extra = (process.env.BEAMR_FALLBACK_FACILITATORS ?? "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);

@@ -14,7 +14,7 @@ import { StatusBar } from "./StatusBar";
 import { SpendFeed } from "./SpendFeed";
 import { providerAccent } from "./providerTheme";
 
-export function BillzApp() {
+export function BeamrApp() {
   const sessionId = useSession();
   const account = useAccount();
   const health = useHealth();
@@ -53,7 +53,7 @@ export function BillzApp() {
             <span className="text-white font-bold text-[10px]">B</span>
           </div>
           <span className="text-sm font-semibold tracking-tight text-zinc-200">
-            BILLZ <span className="text-zinc-600 font-normal">— workspace</span>
+            BEAMR <span className="text-zinc-600 font-normal">— workspace</span>
           </span>
         </div>
 
@@ -115,7 +115,7 @@ export function BillzApp() {
         <ActivityRail models={models} onOpen={openPane} providerMode={health?.providerMode} />
 
         {/* Canvas */}
-        <main className="relative flex-1 overflow-hidden billz-grid-bg">
+        <main className="relative flex-1 overflow-hidden beamr-grid-bg">
           {panes.map((pane) => (
             <TerminalPane
               key={pane.id}

@@ -14,13 +14,18 @@ export function Header({ health }: HeaderProps) {
   return (
     <header className="flex items-center justify-between px-5 py-3 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-sm sticky top-0 z-20">
       <div className="flex items-center gap-3">
-        {/* Logo mark */}
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center">
-            <span className="text-white font-bold text-xs tracking-tight">B</span>
-          </div>
-          <span className="font-semibold text-white tracking-tight text-lg">BILLZ</span>
-        </div>
+        {/* Logo mark — home button */}
+        <a href="/" className="flex items-center gap-2 group" aria-label="BEAMR home">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/favicon-32.png"
+            alt="BEAMR"
+            width={28}
+            height={28}
+            className="w-7 h-7 rounded-lg transition-opacity group-hover:opacity-80"
+          />
+          <span className="font-semibold text-white tracking-tight text-lg">BEAMR</span>
+        </a>
         {/* Mode badge */}
         {isMock && (
           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/15 text-amber-400 border border-amber-500/25">

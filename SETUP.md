@@ -34,7 +34,7 @@ For now, the simplest working Venice path is a Bearer key:
 In `.env.local`:
 
 ```
-BILLZ_PROVIDER_MODE=live
+BEAMR_PROVIDER_MODE=live
 ```
 
 Then `npm run dev`. Watch the terminal and the spend feed. The first Hyperbolic
@@ -52,9 +52,9 @@ vercel           # or push the repo and import it in the Vercel dashboard
 ```
 
 Set environment variables in the Vercel project settings (do **not** commit them):
-`BILLZ_PROVIDER_MODE`, `WALLET_PRIVATE_KEY` (mark as a secret),
-`BILLZ_NETWORK`, `X402_FACILITATOR_URL`, `BILLZ_SESSION_BUDGET_USD`,
-`BILLZ_MAX_PAYMENT_PER_CALL_USD`, and `VENICE_API_KEY` if used.
+`BEAMR_PROVIDER_MODE`, `WALLET_PRIVATE_KEY` (mark as a secret),
+`BEAMR_NETWORK`, `X402_FACILITATOR_URL`, `BEAMR_SESSION_BUDGET_USD`,
+`BEAMR_MAX_PAYMENT_PER_CALL_USD`, and `VENICE_API_KEY` if used.
 
 Notes:
 - Vercel **Hobby is non-commercial only**; the moment you have paying users, move

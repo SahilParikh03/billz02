@@ -22,7 +22,7 @@ export interface Account {
   /** True when CDP is configured (email signup is available). */
   enabled: boolean;
   status: AccountStatus;
-  /** Embedded-wallet EVM address when signed in; also the X-Billz-User id. */
+  /** Embedded-wallet EVM address when signed in; also the X-Beamr-User id. */
   address: string | null;
   /** Email the user signed in with (for display). */
   email: string | null;

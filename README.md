@@ -1,11 +1,11 @@
-# BILLZ
+# BEAMR
 
 A consumer-facing AI inference router that pays model providers per call over the
 **x402** protocol (gasless USDC on Base). You talk to it like any chat app; under
 the hood it routes each request to a provider, pays for it, and shows you every
 charge in a **live spend feed**.
 
-This repo implements **Stages 0–3** of the plan in [`../billz_prd.md`](../billz_prd.md)
+This repo implements **Stages 0–3** of the plan in [`../beamr_prd.md`](../beamr_prd.md)
 (mock-verified; live mainnet pieces pending — see [SETUP.md](./SETUP.md)).
 
 ## What works today
@@ -60,7 +60,7 @@ Open the app, chat, and watch the spend feed fill in with simulated charges.
 | `npm run build` / `npm start` | Production build / serve |
 | `npm test` | Unit + integration tests (Vitest, mock mode) |
 | `npm run eval` | Router-vs-baseline A/B cost benchmark |
-| `npm run train` | Aggregate `.billz/feedback.jsonl` → leaderboard + dataset export |
+| `npm run train` | Aggregate `.beamr/feedback.jsonl` → leaderboard + dataset export |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
 
@@ -132,4 +132,4 @@ server-wallet signer, CDP facilitator selection + failover, shared Redis budgets
 cache, per-user credit, and a `/api/readiness` go-live gate. What remains is
 **live verification on mainnet** (real CDP creds + USDC) — the procedure is in
 [RUNBOOK.md](./RUNBOOK.md); testnet setup is in [SETUP.md](./SETUP.md). Details in
-`../billz_prd.md`.
+`../beamr_prd.md`.

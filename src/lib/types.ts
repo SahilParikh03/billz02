@@ -1,5 +1,5 @@
 /**
- * BILLZ shared contract.
+ * BEAMR shared contract.
  *
  * Everything that crosses a module boundary lives here so the provider adapters,
  * the routing policy, the payment layer, the streaming pipeline, and the UI all
@@ -53,7 +53,7 @@ export interface ChatMessage {
   name?: string;
 }
 
-/** Subset of the OpenAI chat-completions request BILLZ accepts in Stage 0. */
+/** Subset of the OpenAI chat-completions request BEAMR accepts in Stage 0. */
 export interface ChatCompletionRequest {
   /** Model id, or "auto"/absent to let the router choose. */
   model?: string;
@@ -61,7 +61,7 @@ export interface ChatCompletionRequest {
   stream?: boolean;
   temperature?: number;
   max_tokens?: number;
-  /** Optional session id for budget tracking; also accepted via the X-Billz-Session header. */
+  /** Optional session id for budget tracking; also accepted via the X-Beamr-Session header. */
   session_id?: string;
 }
 

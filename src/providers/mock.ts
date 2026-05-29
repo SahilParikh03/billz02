@@ -63,7 +63,7 @@ export function createMockAdapter(_cfg: AppConfig): ProviderAdapter {
 
     const reply =
       `[mock:${model}] You said: "${lastUser.slice(0, 160)}". ` +
-      `This is a simulated streamed response from the BILLZ mock provider, so the ` +
+      `This is a simulated streamed response from the BEAMR mock provider, so the ` +
       `full pipeline — routing, streaming, the session budget, and the live spend ` +
       `feed — can be exercised with no wallet and no network.`;
 

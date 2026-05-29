@@ -131,17 +131,17 @@ export function createRedisStore(url: string, token: string): Store {
 
 // ── Singleton (env-driven) ─────────────────────────────────────────────────────
 
-const g = globalThis as unknown as { __billzStore?: Store };
+const g = globalThis as unknown as { __beamrStore?: Store };
 
 export function getStore(): Store {
-  if (g.__billzStore) return g.__billzStore;
+  if (g.__beamrStore) return g.__beamrStore;
   const url = process.env.REDIS_URL ?? process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.REDIS_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
-  g.__billzStore = url && token ? createRedisStore(url, token) : createMemoryStore();
-  return g.__billzStore;
+  g.__beamrStore = url && token ? createRedisStore(url, token) : createMemoryStore();
+  return g.__beamrStore;
 }
 
 /** Reset the singleton — for tests. */
 export function resetStore(): void {
-  g.__billzStore = undefined;
+  g.__beamrStore = undefined;
 }

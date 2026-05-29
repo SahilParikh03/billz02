@@ -52,14 +52,14 @@ describe("per-user daily budget", () => {
 
   beforeEach(() => {
     resetStore();
-    process.env.BILLZ_USER_DAILY_BUDGET_USD = "1";
+    process.env.BEAMR_USER_DAILY_BUDGET_USD = "1";
   });
   afterEach(() => {
-    delete process.env.BILLZ_USER_DAILY_BUDGET_USD;
+    delete process.env.BEAMR_USER_DAILY_BUDGET_USD;
   });
 
   it("is disabled (budget 0) when the cap is unset", async () => {
-    delete process.env.BILLZ_USER_DAILY_BUDGET_USD;
+    delete process.env.BEAMR_USER_DAILY_BUDGET_USD;
     const u = await getUserBudgetStatus(uid);
     expect(u.budget).toBe(0);
     // a charge within the session cap is allowed; the disabled user cap never blocks

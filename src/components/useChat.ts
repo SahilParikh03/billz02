@@ -10,14 +10,14 @@ export interface ChatMessage {
   done?: boolean;
   /** Set when a 402 budget error occurs */
   budgetExceeded?: boolean;
-  /** traceId from X-Billz-Trace header; set on completed assistant messages */
+  /** traceId from X-Beamr-Trace header; set on completed assistant messages */
   traceId?: string;
 }
 
 interface UseChatOptions {
   sessionId: string;
   model?: string;
-  /** Signed-in embedded-wallet address; sent as X-Billz-User to gate on credit. */
+  /** Signed-in embedded-wallet address; sent as X-Beamr-User to gate on credit. */
   userId?: string | null;
 }
 
@@ -83,15 +83,15 @@ export function useChat({ sessionId, model = "auto", userId }: UseChatOptions): 
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-Billz-Session": sessionId,
-            ...(userId ? { "X-Billz-User": userId } : {}),
+            "X-Beamr-Session": sessionId,
+            ...(userId ? { "X-Beamr-User": userId } : {}),
           },
           body: JSON.stringify(body),
           signal: ac.signal,
         });
 
         // Capture trace id from response headers before consuming body
-        const traceId = res.headers.get("x-billz-trace") ?? undefined;
+        const traceId = res.headers.get("x-beamr-trace") ?? undefined;
 
         // Handle 402 budget exceeded
         if (res.status === 402) {

@@ -13,10 +13,10 @@ import { recordVote } from "./quality";
 const CTX_TTL_MS = 60 * 60 * 1000;
 const MAX_CTX = 5000;
 
-const g = globalThis as unknown as { __billzCtx?: Map<string, RoutingContext> };
+const g = globalThis as unknown as { __beamrCtx?: Map<string, RoutingContext> };
 function ctxMap(): Map<string, RoutingContext> {
-  if (!g.__billzCtx) g.__billzCtx = new Map();
-  return g.__billzCtx;
+  if (!g.__beamrCtx) g.__beamrCtx = new Map();
+  return g.__beamrCtx;
 }
 
 export function captureContext(ctx: RoutingContext): void {
@@ -66,13 +66,13 @@ export async function submitFeedback(
 async function appendFeedbackLog(row: Record<string, unknown>): Promise<void> {
   try {
     const { mkdir, appendFile } = await import("node:fs/promises");
-    await mkdir(".billz", { recursive: true });
-    await appendFile(".billz/feedback.jsonl", JSON.stringify(row) + "\n");
+    await mkdir(".beamr", { recursive: true });
+    await appendFile(".beamr/feedback.jsonl", JSON.stringify(row) + "\n");
   } catch {
     // best-effort: serverless FS may be read-only
   }
 }
 
 export function resetFeedback(): void {
-  g.__billzCtx = undefined;
+  g.__beamrCtx = undefined;
 }

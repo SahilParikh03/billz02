@@ -299,7 +299,7 @@ export function ChatPanel({
               <span className="text-2xl">⚡</span>
             </div>
             <div>
-              <p className="text-zinc-300 font-medium mb-1">Ask BILLZ anything</p>
+              <p className="text-zinc-300 font-medium mb-1">Ask BEAMR anything</p>
               <p className="text-zinc-500 text-sm max-w-xs">
                 Your request is routed to the best model. Every charge shows up live in the feed.
               </p>
@@ -375,7 +375,7 @@ export function ChatPanel({
             onKeyDown={handleKeyDown}
             onInput={handleInput}
             disabled={isStreaming}
-            placeholder={isStreaming ? "Streaming response…" : "Message BILLZ… (Enter to send, Shift+Enter for newline)"}
+            placeholder={isStreaming ? "Streaming response…" : "Message BEAMR… (Enter to send, Shift+Enter for newline)"}
             rows={1}
             className="flex-1 resize-none rounded-xl bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 text-sm px-3 py-2.5 outline-none focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed leading-relaxed"
           />
@@ -407,7 +407,7 @@ export function ChatPanel({
           </button>
         </div>
         <p className="text-xs text-zinc-600 mt-1.5">
-          Powered by BILLZ · gasless USDC on Base · every call settled on-chain
+          Powered by BEAMR · gasless USDC on Base · every call settled on-chain
         </p>
       </div>
     </div>

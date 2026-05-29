@@ -1,6 +1,6 @@
-# BILLZ — Mainnet Go-Live Runbook
+# BEAMR — Mainnet Go-Live Runbook
 
-How to take BILLZ live on **Base mainnet** with real USDC settlement, and how to
+How to take BEAMR live on **Base mainnet** with real USDC settlement, and how to
 operate, monitor, and roll it back. This is the mainnet counterpart to
 [SETUP.md](./SETUP.md) (which covers the testnet path). Everything here maps to
 flags and endpoints that already exist in the code — nothing new to build.
@@ -15,7 +15,7 @@ flags and endpoints that already exist in the code — nothing new to build.
 ## 0. What "live" changes
 
 In mock mode the whole pipeline runs offline on a simulated provider. Flipping to
-live (`BILLZ_PROVIDER_MODE=live`, `BILLZ_NETWORK=base`) changes three things:
+live (`BEAMR_PROVIDER_MODE=live`, `BEAMR_NETWORK=base`) changes three things:
 
 | Concern | Mock / testnet | Mainnet |
 | --- | --- | --- |
@@ -51,9 +51,9 @@ returns `200` with `liveReady:true` only when there are no hard blockers, else
 One CDP project covers all three. From `portal.cdp.coinbase.com`:
 
 1. **Server wallet** (the router's hot wallet, MPC custody, no key at rest):
-   set `BILLZ_WALLET_PROVIDER=cdp` and the three `CDP_*` secrets. On first boot
+   set `BEAMR_WALLET_PROVIDER=cdp` and the three `CDP_*` secrets. On first boot
    the app calls `getOrCreateAccount({ name: CDP_WALLET_NAME })` (default
-   `billz-router`) — **reuse the same `CDP_WALLET_NAME` across deploys** so the
+   `beamr-router`) — **reuse the same `CDP_WALLET_NAME` across deploys** so the
    funded account is reloaded, not recreated.
 2. **Facilitator**: setting `CDP_API_KEY_ID` + `CDP_API_KEY_SECRET` *automatically*
    selects the Coinbase-hosted facilitator (`api.cdp.coinbase.com/platform/v2/x402`)
@@ -62,7 +62,7 @@ One CDP project covers all three. From `portal.cdp.coinbase.com`:
 3. **Embedded wallets** (email signup): set `NEXT_PUBLIC_CDP_PROJECT_ID`. Without
    it the app runs anonymous-only (per-session budget) — see §8.
 
-> **Custody note.** `BILLZ_WALLET_PROVIDER=key` (raw `WALLET_PRIVATE_KEY`) works
+> **Custody note.** `BEAMR_WALLET_PROVIDER=key` (raw `WALLET_PRIVATE_KEY`) works
 > on mainnet but is flagged as a warning by `/api/readiness`. Use it only for a
 > short, low-cap canary; move to `cdp` before any real volume.
 
@@ -90,36 +90,36 @@ Set these in the host's env (Vercel project settings → mark secrets as secret;
 ### Required for mainnet
 
 ```bash
-BILLZ_PROVIDER_MODE=live
-BILLZ_NETWORK=base
+BEAMR_PROVIDER_MODE=live
+BEAMR_NETWORK=base
 
 # Wallet (recommended: CDP MPC server wallet)
-BILLZ_WALLET_PROVIDER=cdp
+BEAMR_WALLET_PROVIDER=cdp
 CDP_API_KEY_ID=...
 CDP_API_KEY_SECRET=...
 CDP_WALLET_SECRET=...
-CDP_WALLET_NAME=billz-router      # reuse across deploys
+CDP_WALLET_NAME=beamr-router      # reuse across deploys
 
 # Shared state
 REDIS_URL=https://...upstash.io
 REDIS_TOKEN=...
 
 # Spend caps (start conservative — see §6 canary)
-BILLZ_SESSION_BUDGET_USD=1
-BILLZ_MAX_PAYMENT_PER_CALL_USD=0.02
-BILLZ_USER_DAILY_BUDGET_USD=1     # 0 disables the per-user/day cap
+BEAMR_SESSION_BUDGET_USD=1
+BEAMR_MAX_PAYMENT_PER_CALL_USD=0.02
+BEAMR_USER_DAILY_BUDGET_USD=1     # 0 disables the per-user/day cap
 ```
 
 ### Recommended / optional
 
 ```bash
 NEXT_PUBLIC_CDP_PROJECT_ID=...    # email signup + embedded wallets
-BILLZ_WELCOME_CREDIT_USD=1        # one-time test credit per new wallet
-BILLZ_FALLBACK_FACILITATORS=https://...   # comma-sep failover after CDP
-BILLZ_RPC_URL=https://...         # private Base RPC (avoid public rate limits)
+BEAMR_WELCOME_CREDIT_USD=1        # one-time test credit per new wallet
+BEAMR_FALLBACK_FACILITATORS=https://...   # comma-sep failover after CDP
+BEAMR_RPC_URL=https://...         # private Base RPC (avoid public rate limits)
 VENICE_API_KEY=...                # until Venice SIWE top-up lands (see SETUP.md)
 SURPLUS_BASE_URL=https://www.surplusintelligence.ai/x402/api/inference/v1
-BILLZ_EMBEDDER=minilm             # higher-quality cache matching (downloads model)
+BEAMR_EMBEDDER=minilm             # higher-quality cache matching (downloads model)
 ```
 
 Leave `X402_FACILITATOR_URL` at its default; with CDP creds set it's only used as
@@ -130,7 +130,7 @@ the first failover entry behind the CDP facilitator.
 ## 5. Fund the router wallet
 
 1. Get the wallet address. For the **CDP** provider, the address is logged on
-   first boot and shown in the CDP portal under the `billz-router` account; for
+   first boot and shown in the CDP portal under the `beamr-router` account; for
    the **key** provider, derive it:
    ```bash
    node -e 'import("viem/accounts").then(({privateKeyToAccount})=>{require("dotenv").config({path:".env.local"});console.log(privateKeyToAccount(process.env.WALLET_PRIVATE_KEY).address)})'
@@ -168,7 +168,7 @@ Expected on a correct mainnet config:
 
 If `liveReady:false`, fix every line in `blockers[]` (each names the missing
 flag). Common ones:
-- `BILLZ_PROVIDER_MODE is not 'live'` → set it to `live`.
+- `BEAMR_PROVIDER_MODE is not 'live'` → set it to `live`.
 - `CDP wallet creds incomplete …` → set all three `CDP_*` secrets.
 - `shared store 'redis' is unreachable …` → check `REDIS_URL`/`REDIS_TOKEN`.
 
@@ -195,7 +195,7 @@ curl -s -X POST https://YOUR_HOST/api/v1/chat/completions \
 - Send a prompt that exceeds the session cap → **HTTP 402** `budget_exceeded`.
 
 Once a real tx confirms on-chain and the 402 cap fires, settlement is verified.
-Raise `BILLZ_SESSION_BUDGET_USD` / `BILLZ_MAX_PAYMENT_PER_CALL_USD` gradually.
+Raise `BEAMR_SESSION_BUDGET_USD` / `BEAMR_MAX_PAYMENT_PER_CALL_USD` gradually.
 
 ---
 
@@ -205,11 +205,11 @@ If `NEXT_PUBLIC_CDP_PROJECT_ID` is set:
 - The header shows **Sign in** (not the "Guest" chip). Email → OTP → signed-in
   shows the embedded-wallet address + remaining test credit.
 - On sign-in the app calls `POST /api/account`, which idempotently grants
-  `BILLZ_WELCOME_CREDIT_USD` once. Verify:
+  `BEAMR_WELCOME_CREDIT_USD` once. Verify:
   ```bash
   curl -s "https://YOUR_HOST/api/account?user=0xWALLET" | jq .   # {balance, granted}
   ```
-- Signed-in chat sends `X-Billz-User: <address>`; calls deplete that wallet's
+- Signed-in chat sends `X-Beamr-User: <address>`; calls deplete that wallet's
   credit and return **402 `credit exhausted`** when it hits 0 (independent of the
   per-session cap). Anonymous users are unaffected.
 
@@ -236,11 +236,11 @@ unreachable) pages instead of silently dropping budget enforcement.
 
 Fastest to slowest, all without a code deploy:
 
-1. **Stop spending immediately** — set `BILLZ_PROVIDER_MODE=mock` and redeploy
+1. **Stop spending immediately** — set `BEAMR_PROVIDER_MODE=mock` and redeploy
    env (or restart). All calls become free simulated responses; `/api/readiness`
    goes `503`. No wallet or chain interaction.
-2. **Throttle** — drop `BILLZ_MAX_PAYMENT_PER_CALL_USD` and
-   `BILLZ_SESSION_BUDGET_USD` / `BILLZ_USER_DAILY_BUDGET_USD` to clamp blast radius.
+2. **Throttle** — drop `BEAMR_MAX_PAYMENT_PER_CALL_USD` and
+   `BEAMR_SESSION_BUDGET_USD` / `BEAMR_USER_DAILY_BUDGET_USD` to clamp blast radius.
 3. **Cut a provider** — if one upstream misbehaves, the router already fails over
    across providers; to force it off, remove its creds/URL.
 4. **Wallet containment** — with the CDP server wallet, rotate the wallet secret /
@@ -249,7 +249,7 @@ Fastest to slowest, all without a code deploy:
 
 The session budget (default in code) and per-call max are the structural
 backstops: even with no human in the loop, a single session can't exceed its cap
-and a single call can't exceed `BILLZ_MAX_PAYMENT_PER_CALL_USD` (enforced as the
+and a single call can't exceed `BEAMR_MAX_PAYMENT_PER_CALL_USD` (enforced as the
 x402 `maxValue` the signer will authorize).
 
 ---
@@ -257,11 +257,11 @@ x402 `maxValue` the signer will authorize).
 ## 10. Incident playbook
 
 - **Facilitator down / settlements failing.** Add alternates to
-  `BILLZ_FALLBACK_FACILITATORS` (CDP → xpay → OpenZeppelin Relayer); the chain is
+  `BEAMR_FALLBACK_FACILITATORS` (CDP → xpay → OpenZeppelin Relayer); the chain is
   tried in order. If all fail, roll back to mock (§9.1).
 - **Spend higher than expected.** Check the leaderboard + feed for a provider
   pricing surprise; lower the per-call max; verify the cache is hitting (a low
-  hit-rate inflates cost — confirm `BILLZ_EMBEDDER` and `BILLZ_CACHE_SIM_THRESHOLD`).
+  hit-rate inflates cost — confirm `BEAMR_EMBEDDER` and `BEAMR_CACHE_SIM_THRESHOLD`).
 - **Budget not holding across instances.** `/api/readiness.store.shared` is
   `false` → Redis isn't wired; set `REDIS_URL`/`REDIS_TOKEN`. Until then, pin to a
   single instance.

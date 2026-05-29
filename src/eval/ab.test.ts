@@ -7,7 +7,7 @@ import { resetStore } from "@/lib/store";
 import { resetCache } from "@/pipeline/cache";
 
 /**
- * A/B harness: BILLZ router (classify → cascade → cache) vs an always-strong
+ * A/B harness: BEAMR router (classify → cascade → cache) vs an always-strong
  * baseline, in mock mode. Reports cost-per-resolved-query and asserts a real
  * cost reduction. Mock costs are deterministic, so this is a stable guardrail
  * for the Stage 1 "≥40% cheaper at parity" thesis (here we assert a conservative
@@ -107,7 +107,7 @@ beforeAll(async () => {
   // eslint-disable-next-line no-console
   console.log(
     [
-      "\n──────── BILLZ A/B (mock mode) ────────",
+      "\n──────── BEAMR A/B (mock mode) ────────",
       `prompts:            ${PROMPTS.length}`,
       `baseline (strong):  $${report.baselineCost.toFixed(6)}`,
       `router:             $${report.routerCost.toFixed(6)}`,

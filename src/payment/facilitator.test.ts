@@ -35,7 +35,7 @@ function encodeReceipt(obj: unknown): string {
 afterEach(() => {
   delete process.env.CDP_API_KEY_ID;
   delete process.env.CDP_API_KEY_SECRET;
-  delete process.env.BILLZ_FALLBACK_FACILITATORS;
+  delete process.env.BEAMR_FALLBACK_FACILITATORS;
 });
 
 // ── decodeReceipt ───────────────────────────────────────────────────────────
@@ -127,10 +127,10 @@ describe("facilitatorChain", () => {
     expect(String(chain[1].url)).toBe(PUBLIC_URL);
   });
 
-  it("appends extra fallbacks from BILLZ_FALLBACK_FACILITATORS, de-duplicated", () => {
+  it("appends extra fallbacks from BEAMR_FALLBACK_FACILITATORS, de-duplicated", () => {
     delete process.env.CDP_API_KEY_ID;
     delete process.env.CDP_API_KEY_SECRET;
-    process.env.BILLZ_FALLBACK_FACILITATORS =
+    process.env.BEAMR_FALLBACK_FACILITATORS =
       "https://xpay.example/facilitator, https://oz.example/facilitator, https://x402.org/facilitator";
     const urls = facilitatorChain(cfg()).map((c) => String(c.url));
     expect(urls).toEqual([

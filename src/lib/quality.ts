@@ -25,10 +25,10 @@ interface QualityState {
   costs: Map<string, CostStat>; // key: provider|model
 }
 
-const g = globalThis as unknown as { __billzQuality?: QualityState };
+const g = globalThis as unknown as { __beamrQuality?: QualityState };
 function state(): QualityState {
-  if (!g.__billzQuality) g.__billzQuality = { votes: new Map(), costs: new Map() };
-  return g.__billzQuality;
+  if (!g.__beamrQuality) g.__beamrQuality = { votes: new Map(), costs: new Map() };
+  return g.__beamrQuality;
 }
 
 const voteKey = (t: QueryClass, p: ProviderId, m: string) => `${t}|${p}|${m}`;
@@ -104,5 +104,5 @@ export function leaderboard(): LeaderboardRow[] {
 }
 
 export function resetQuality(): void {
-  g.__billzQuality = undefined;
+  g.__beamrQuality = undefined;
 }
