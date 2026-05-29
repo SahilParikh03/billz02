@@ -48,7 +48,22 @@ function PaymentModeBadge({ mode }: { mode: string }) {
   );
 }
 
-function SpendEventCard({ event, isNew }: { event: SpendEvent; isNew: boolean }) {
+/** Block-explorer base URL for the active network (mainnet vs. Sepolia testnet). */
+function explorerBaseFor(network?: string): string {
+  return network === "base"
+    ? "https://basescan.org"
+    : "https://sepolia.basescan.org";
+}
+
+function SpendEventCard({
+  event,
+  isNew,
+  explorerBase,
+}: {
+  event: SpendEvent;
+  isNew: boolean;
+  explorerBase: string;
+}) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -108,7 +123,7 @@ function SpendEventCard({ event, isNew }: { event: SpendEvent; isNew: boolean })
         <span className="text-[10px] text-zinc-700 font-mono">{time}</span>
         {event.settlementTxHash && (
           <a
-            href={`https://sepolia.basescan.org/tx/${event.settlementTxHash}`}
+            href={`${explorerBase}/tx/${event.settlementTxHash}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[10px] text-blue-400 hover:text-blue-300 font-mono flex items-center gap-1 transition-colors"
@@ -129,9 +144,11 @@ interface SpendFeedProps {
   sessionSpent: number;
   sessionBudget: number;
   connected: boolean;
+  network?: string;
 }
 
-export function SpendFeed({ events, sessionSpent, sessionBudget, connected }: SpendFeedProps) {
+export function SpendFeed({ events, sessionSpent, sessionBudget, connected, network }: SpendFeedProps) {
+  const explorerBase = explorerBaseFor(network);
   const seenIds = useRef<Set<string>>(new Set());
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
 
@@ -214,6 +231,7 @@ export function SpendFeed({ events, sessionSpent, sessionBudget, connected }: Sp
               key={event.traceId}
               event={event}
               isNew={newIds.has(event.traceId)}
+              explorerBase={explorerBase}
             />
           ))
         )}

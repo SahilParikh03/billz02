@@ -39,3 +39,11 @@ body,
 #__next {
   height: 100%;
 }
+
+/* Terminal-workspace canvas: subtle dotted grid behind the floating panes
+   (the "CodeGrid" look — see public/img_01.png). */
+.billz-grid-bg {
+  background-color: #0a0a0b;
+  background-image: radial-gradient(rgba(113, 113, 122, 0.14) 1px, transparent 1px);
+  background-size: 22px 22px;
+}

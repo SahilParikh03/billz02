@@ -308,7 +308,7 @@ export function ChatPanel({
               {[
                 "Explain x402 payments",
                 "Write a haiku about crypto",
-                "What is Base Sepolia?",
+                "What is Base?",
               ].map((s) => (
                 <button
                   key={s}
