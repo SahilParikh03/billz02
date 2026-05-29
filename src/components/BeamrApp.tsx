@@ -49,9 +49,20 @@ export function BeamrApp() {
           <span className="w-3 h-3 rounded-full bg-emerald-500/80" />
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-5 h-5 rounded bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center">
-            <span className="text-white font-bold text-[10px]">B</span>
-          </div>
+          <a
+            href="/"
+            aria-label="BEAMR home"
+            className="shrink-0 transition-opacity hover:opacity-80"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/favicon-32.png"
+              alt="BEAMR"
+              width={20}
+              height={20}
+              className="w-5 h-5 rounded"
+            />
+          </a>
           <span className="text-sm font-semibold tracking-tight text-zinc-200">
             BEAMR <span className="text-zinc-600 font-normal">— workspace</span>
           </span>
