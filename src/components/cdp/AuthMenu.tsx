@@ -35,16 +35,16 @@ export function AuthMenu() {
     return (
       <span
         title="Email signup is available once NEXT_PUBLIC_CDP_PROJECT_ID is set"
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-800/70 text-zinc-400 border border-zinc-700"
+        className="glass-btn inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium text-muted"
       >
-        <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
+        <span className="w-1.5 h-1.5 rounded-full bg-faint" />
         Guest
       </span>
     );
   }
 
   if (account.status === "loading") {
-    return <span className="text-xs text-zinc-500 font-mono">…</span>;
+    return <span className="text-xs text-muted font-mono">…</span>;
   }
 
   // ── Signed in ───────────────────────────────────────────────────────────────
@@ -53,34 +53,36 @@ export function AuthMenu() {
       <div className="relative" ref={ref}>
         <button
           onClick={() => setOpen((v) => !v)}
-          className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 hover:bg-emerald-500/25 transition-colors"
+          className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
           <span className="font-mono">{truncate(account.address)}</span>
           {account.credit != null && (
-            <span className="text-emerald-200/80">· ${account.credit.toFixed(3)}</span>
+            <span className="text-emerald-600/90 dark:text-emerald-200/80">· ${account.credit.toFixed(3)}</span>
           )}
         </button>
         {open && (
-          <div className="absolute right-0 mt-2 w-64 rounded-xl bg-zinc-900 border border-zinc-700 shadow-xl p-3 z-30 text-sm">
-            <div className="text-zinc-400 text-xs">Signed in</div>
-            {account.email && <div className="text-zinc-200 truncate">{account.email}</div>}
-            <div className="mt-2 font-mono text-xs text-zinc-400 break-all">{account.address}</div>
-            <div className="mt-3 flex items-center justify-between rounded-lg bg-zinc-800/60 px-3 py-2">
-              <span className="text-xs text-zinc-400">Test credit</span>
-              <span className="font-mono text-sm text-emerald-300">
-                {account.credit != null ? `$${account.credit.toFixed(3)}` : "—"}
-              </span>
+          <div className="glass absolute right-0 mt-2 w-64 rounded-2xl p-3 z-30 text-sm">
+            <div className="relative">
+              <div className="text-muted text-xs">Signed in</div>
+              {account.email && <div className="text-ink truncate">{account.email}</div>}
+              <div className="mt-2 font-mono text-xs text-muted break-all">{account.address}</div>
+              <div className="mt-3 flex items-center justify-between rounded-lg bg-[color-mix(in_oklab,var(--ink)_7%,transparent)] px-3 py-2">
+                <span className="text-xs text-muted">Test credit</span>
+                <span className="font-mono text-sm text-emerald-600 dark:text-emerald-300">
+                  {account.credit != null ? `$${account.credit.toFixed(3)}` : "—"}
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  void account.signOut();
+                }}
+                className="glass-btn mt-3 w-full rounded-lg px-3 py-1.5 text-xs text-ink"
+              >
+                Sign out
+              </button>
             </div>
-            <button
-              onClick={() => {
-                setOpen(false);
-                void account.signOut();
-              }}
-              className="mt-3 w-full rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors"
-            >
-              Sign out
-            </button>
           </div>
         )}
       </div>
@@ -92,12 +94,12 @@ export function AuthMenu() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-violet-500 to-blue-600 text-white hover:opacity-90 transition-opacity"
+        className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-semibold bg-gradient-to-br from-accent to-accent-2 text-white shadow-sm hover:opacity-90 transition-opacity"
       >
         Sign in
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-72 rounded-xl bg-zinc-900 border border-zinc-700 shadow-xl p-4 z-30">
+        <div className="glass absolute right-0 mt-2 w-72 rounded-2xl p-4 z-30"><div className="relative">
           {account.status === "otp-pending" ? (
             <form
               onSubmit={async (e) => {
@@ -109,8 +111,8 @@ export function AuthMenu() {
                 setOtp("");
               }}
             >
-              <div className="text-sm text-zinc-200 font-medium">Enter the code</div>
-              <div className="text-xs text-zinc-500 mt-0.5">
+              <div className="text-sm text-ink font-medium">Enter the code</div>
+              <div className="text-xs text-muted mt-0.5">
                 Sent to {account.email ?? "your email"}
               </div>
               <input
@@ -119,16 +121,16 @@ export function AuthMenu() {
                 value={otp}
                 onChange={(e) => setOtp(e.target.value)}
                 placeholder="6-digit code"
-                className="mt-3 w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-100 font-mono tracking-widest focus:outline-none focus:border-violet-500"
+                className="mt-3 w-full rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm text-ink placeholder-muted-2 font-mono tracking-widest outline-none focus:border-accent transition-colors"
               />
               {account.error && (
-                <div className="mt-2 text-xs text-rose-400">{account.error}</div>
+                <div className="mt-2 text-xs text-rose-500 dark:text-rose-400">{account.error}</div>
               )}
               <div className="mt-3 flex items-center gap-2">
                 <button
                   type="submit"
                   disabled={busy || !otp.trim()}
-                  className="flex-1 rounded-lg bg-gradient-to-r from-violet-500 to-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  className="flex-1 rounded-lg bg-gradient-to-br from-accent to-accent-2 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 >
                   {busy ? "Verifying…" : "Verify"}
                 </button>
@@ -138,7 +140,7 @@ export function AuthMenu() {
                     account.cancel();
                     setOtp("");
                   }}
-                  className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800"
+                  className="glass-btn rounded-lg px-3 py-2 text-sm text-muted hover:text-ink"
                 >
                   Back
                 </button>
@@ -154,8 +156,8 @@ export function AuthMenu() {
                 setBusy(false);
               }}
             >
-              <div className="text-sm text-zinc-200 font-medium">Sign up with email</div>
-              <div className="text-xs text-zinc-500 mt-0.5">
+              <div className="text-sm text-ink font-medium">Sign up with email</div>
+              <div className="text-xs text-muted mt-0.5">
                 We create a wallet for you and add free test credit — no seed phrase.
               </div>
               <input
@@ -164,20 +166,21 @@ export function AuthMenu() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className="mt-3 w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-violet-500"
+                className="mt-3 w-full rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm text-ink placeholder-muted-2 outline-none focus:border-accent transition-colors"
               />
               {account.error && (
-                <div className="mt-2 text-xs text-rose-400">{account.error}</div>
+                <div className="mt-2 text-xs text-rose-500 dark:text-rose-400">{account.error}</div>
               )}
               <button
                 type="submit"
                 disabled={busy || !email.trim()}
-                className="mt-3 w-full rounded-lg bg-gradient-to-r from-violet-500 to-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="mt-3 w-full rounded-lg bg-gradient-to-br from-accent to-accent-2 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {busy ? "Sending…" : "Continue"}
               </button>
             </form>
           )}
+          </div>
         </div>
       )}
     </div>

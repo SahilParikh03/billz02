@@ -12,11 +12,11 @@ function formatUsdc(amount: number): string {
 
 function ProviderBadge({ provider }: { provider: string }) {
   const styles: Record<string, string> = {
-    venice: "bg-violet-500/15 text-violet-400 border-violet-500/25",
-    hyperbolic: "bg-blue-500/15 text-blue-400 border-blue-500/25",
-    mock: "bg-zinc-700/50 text-zinc-400 border-zinc-600/30",
+    venice: "bg-violet-500/15 text-violet-600 dark:text-violet-300 border-violet-500/25",
+    hyperbolic: "bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/25",
+    mock: "bg-[color-mix(in_oklab,var(--ink)_8%,transparent)] text-muted border-line",
   };
-  const style = styles[provider] ?? "bg-zinc-700/50 text-zinc-400 border-zinc-600/30";
+  const style = styles[provider] ?? "bg-[color-mix(in_oklab,var(--ink)_8%,transparent)] text-muted border-line";
   return (
     <span
       className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium border uppercase tracking-wide ${style}`}
@@ -29,21 +29,28 @@ function ProviderBadge({ provider }: { provider: string }) {
 function PaymentModeBadge({ mode }: { mode: string }) {
   if (mode === "x402-percall") {
     return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-        ⛓ x402
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path d="M9 13l-2 2a3.5 3.5 0 0 1-5-5l3-3a3.5 3.5 0 0 1 5 0M15 11l2-2a3.5 3.5 0 0 1 5 5l-3 3a3.5 3.5 0 0 1-5 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        x402
       </span>
     );
   }
   if (mode === "credit-balance") {
     return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
-        💳 credit
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <rect x="2.5" y="5.5" width="19" height="13" rx="2.5" stroke="currentColor" strokeWidth="2" />
+          <path d="M2.5 9.5h19" stroke="currentColor" strokeWidth="2" />
+        </svg>
+        credit
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-zinc-700/50 text-zinc-400 border border-zinc-600/30">
-      ⚙ mock
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-[color-mix(in_oklab,var(--ink)_8%,transparent)] text-muted border border-line">
+      mock
     </span>
   );
 }
@@ -80,25 +87,25 @@ function SpendEventCard({
 
   return (
     <div
-      className={`rounded-xl border bg-zinc-900/80 p-3 transition-all duration-300 ${
+      className={`rounded-xl border bg-surface/70 p-3 transition-all duration-300 ${
         isNew && !visible
           ? "opacity-0 -translate-y-1"
           : "opacity-100 translate-y-0"
-      } ${isNew ? "border-violet-500/30" : "border-zinc-800"}`}
+      } ${isNew ? "border-accent/40" : "border-line"}`}
     >
       {/* Top row: provider + model + amount */}
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="flex items-center gap-1.5 min-w-0">
           <ProviderBadge provider={event.provider} />
-          <span className="text-xs text-zinc-300 font-mono truncate">{event.model}</span>
+          <span className="text-xs text-ink font-mono truncate">{event.model}</span>
         </div>
-        <span className="text-sm font-mono font-semibold text-emerald-400 shrink-0 tabular-nums">
+        <span className="text-sm font-mono font-semibold text-emerald-600 dark:text-emerald-400 shrink-0 tabular-nums">
           {formatUsdc(event.usdcCharged)}
         </span>
       </div>
 
       {/* Middle: tokens + latency */}
-      <div className="flex items-center gap-3 text-[11px] text-zinc-500 font-mono mb-2">
+      <div className="flex items-center gap-3 text-[11px] text-muted font-mono mb-2">
         {(event.inputTokens != null || event.outputTokens != null) && (
           <span>
             {event.inputTokens ?? "?"} → {event.outputTokens ?? "?"} tok
@@ -107,26 +114,26 @@ function SpendEventCard({
         <span>{event.latencyMs}ms</span>
         <PaymentModeBadge mode={event.paymentMode} />
         {event.cacheHit && (
-          <span className="text-cyan-500">cache hit</span>
+          <span className="text-cyan-600 dark:text-cyan-400">cache hit</span>
         )}
       </div>
 
       {/* Reason */}
       {event.reason && (
-        <p className="text-[11px] text-zinc-600 leading-tight mb-2 italic truncate">
+        <p className="text-[11px] text-muted-2 leading-tight mb-2 italic truncate">
           {event.reason}
         </p>
       )}
 
       {/* Bottom: time + tx link */}
       <div className="flex items-center justify-between">
-        <span className="text-[10px] text-zinc-700 font-mono">{time}</span>
+        <span className="text-[10px] text-faint font-mono">{time}</span>
         {event.settlementTxHash && (
           <a
             href={`${explorerBase}/tx/${event.settlementTxHash}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[10px] text-blue-400 hover:text-blue-300 font-mono flex items-center gap-1 transition-colors"
+            className="text-[10px] text-blue-600 dark:text-blue-400 hover:opacity-80 font-mono flex items-center gap-1 transition-opacity"
           >
             {event.settlementTxHash.slice(0, 8)}…
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
@@ -176,17 +183,17 @@ export function SpendFeed({ events, sessionSpent, sessionBudget, connected, netw
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 pt-4 pb-3 border-b border-zinc-800">
+      <div className="px-4 pt-4 pb-3 border-b border-line">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-zinc-200">Live Spend Feed</span>
+            <span className="font-display text-sm font-semibold text-ink">Live spend feed</span>
             <span
               className={`w-2 h-2 rounded-full ${
-                connected ? "bg-emerald-400 animate-pulse" : "bg-zinc-600"
+                connected ? "bg-emerald-400 animate-pulse" : "bg-faint"
               }`}
             />
           </div>
-          <span className="text-xs text-zinc-500 font-mono">
+          <span className="text-xs text-muted font-mono">
             {events.length} event{events.length !== 1 ? "s" : ""}
           </span>
         </div>
@@ -194,33 +201,36 @@ export function SpendFeed({ events, sessionSpent, sessionBudget, connected, netw
         {/* Budget progress */}
         <div>
           <div className="flex justify-between text-xs font-mono mb-1.5">
-            <span className="text-zinc-400">Session spent</span>
-            <span className="text-zinc-300 tabular-nums">
+            <span className="text-muted">Session spent</span>
+            <span className="text-ink tabular-nums">
               {formatUsdc(sessionSpent)} / ${sessionBudget.toFixed(2)}
             </span>
           </div>
-          <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+          <div className="h-1.5 rounded-full bg-[color-mix(in_oklab,var(--ink)_12%,transparent)] overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-500 ${barColor}`}
               style={{ width: `${pct}%` }}
             />
           </div>
           {pct > 85 && (
-            <p className="text-[11px] text-red-400 mt-1">Approaching budget limit</p>
+            <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">Approaching budget limit</p>
           )}
         </div>
       </div>
 
       {/* Events list */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 scrollbar-thin">
         {events.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center gap-3 py-12">
-            <div className="w-10 h-10 rounded-xl border border-zinc-800 flex items-center justify-center">
-              <span className="text-xl">💸</span>
+            <div className="glass w-11 h-11 rounded-xl flex items-center justify-center text-muted">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path d="M3 7.5h18v11a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5v-11Z" stroke="currentColor" strokeWidth="1.6" />
+                <path d="M3 7.5 6 4h12l3 3.5M12 12.5v3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </div>
             <div>
-              <p className="text-zinc-500 text-sm">No charges yet</p>
-              <p className="text-zinc-600 text-xs mt-1">
+              <p className="text-muted text-sm">No charges yet</p>
+              <p className="text-muted-2 text-xs mt-1">
                 Charges appear here as you chat
               </p>
             </div>

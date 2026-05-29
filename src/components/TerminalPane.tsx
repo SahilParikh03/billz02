@@ -68,10 +68,10 @@ function Thumbs({
         disabled={voted !== null || busy}
         className={`transition-colors ${
           voted === "up"
-            ? "text-emerald-400"
+            ? "text-emerald-500 dark:text-emerald-400"
             : voted === "down"
-            ? "text-zinc-700"
-            : "text-zinc-600 hover:text-emerald-400"
+            ? "text-faint"
+            : "text-muted-2 hover:text-emerald-500 dark:hover:text-emerald-400"
         }`}
         title="Helpful"
       >
@@ -82,10 +82,10 @@ function Thumbs({
         disabled={voted !== null || busy}
         className={`transition-colors ${
           voted === "down"
-            ? "text-red-400"
+            ? "text-red-500 dark:text-red-400"
             : voted === "up"
-            ? "text-zinc-700"
-            : "text-zinc-600 hover:text-red-400"
+            ? "text-faint"
+            : "text-muted-2 hover:text-red-500 dark:hover:text-red-400"
         }`}
         title="Not helpful"
       >
@@ -219,7 +219,7 @@ export function TerminalPane({
 
   return (
     <div
-      className={`absolute flex flex-col rounded-lg border bg-zinc-950/95 backdrop-blur-sm overflow-hidden font-mono shadow-2xl transition-shadow ${accent.border} ${
+      className={`glass absolute flex flex-col rounded-xl border overflow-hidden font-mono transition-shadow ${accent.border} ${
         focused ? `ring-1 ${accent.ring}` : ""
       }`}
       style={{
@@ -243,22 +243,24 @@ export function TerminalPane({
         <div className="flex items-center gap-2 min-w-0">
           <span className={`w-2 h-2 rounded-full shrink-0 ${accent.dot}`} />
           <span className={`text-xs truncate ${accent.text}`}>{pane.label}</span>
-          <span className="text-[10px] text-zinc-600 uppercase tracking-wider shrink-0">
+          <span className="text-[10px] text-muted-2 uppercase tracking-wider shrink-0">
             {pane.provider}
           </span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[10px] text-emerald-400/90 tabular-nums" title="Spent in this terminal">
+          <span className="text-[10px] text-emerald-600 dark:text-emerald-400/90 tabular-nums" title="Spent in this terminal">
             {formatUsdc(paneSpend)}
           </span>
           <button
             data-no-drag
             onClick={() => onClose(pane.id)}
-            className="text-zinc-600 hover:text-red-400 transition-colors text-xs leading-none"
+            className="grid place-items-center w-4 h-4 rounded text-muted-2 hover:text-ink hover:bg-[color-mix(in_oklab,var(--ink)_12%,transparent)] transition-colors"
             aria-label="Close terminal"
             title="Close terminal"
           >
-            ✕
+            <svg width="9" height="9" viewBox="0 0 10 10" fill="none" aria-hidden>
+              <path d="M1.5 1.5l7 7M8.5 1.5l-7 7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
           </button>
         </div>
       </div>
@@ -269,7 +271,7 @@ export function TerminalPane({
         className="flex-1 overflow-y-auto px-3 py-2 text-[12.5px] leading-relaxed scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent"
       >
         {messages.length === 0 ? (
-          <p className="text-zinc-600 text-[11px]">
+          <p className="text-muted-2 text-[11px]">
             <span className={accent.text}>{pane.label}</span> ready · type below to start. Each call
             is paid per-request over x402.
           </p>
@@ -279,7 +281,7 @@ export function TerminalPane({
               return (
                 <div key={msg.id} className="mb-1.5 flex gap-1.5">
                   <span className={`${accent.text} shrink-0`}>❯</span>
-                  <span className="text-zinc-300 whitespace-pre-wrap break-words">{msg.content}</span>
+                  <span className="text-ink whitespace-pre-wrap break-words">{msg.content}</span>
                 </div>
               );
             }
@@ -288,10 +290,10 @@ export function TerminalPane({
               <div key={msg.id} className="mb-3">
                 <div
                   className={`whitespace-pre-wrap break-words pl-4 ${
-                    isError ? "text-red-400" : "text-zinc-200"
+                    isError ? "text-red-500 dark:text-red-400" : "text-ink/90"
                   }`}
                 >
-                  {msg.content || <span className="text-zinc-600">…</span>}
+                  {msg.content || <span className="text-muted-2">…</span>}
                   {!msg.done && msg.content && (
                     <span className={`inline-block w-1.5 h-3.5 ml-0.5 align-middle animate-pulse ${accent.dot}`} />
                   )}
@@ -306,7 +308,7 @@ export function TerminalPane({
       </div>
 
       {/* Prompt input */}
-      <div className={`flex items-end gap-2 px-3 py-2 border-t ${accent.border} bg-black/30`}>
+      <div className={`flex items-end gap-2 px-3 py-2 border-t ${accent.border} bg-[color-mix(in_oklab,var(--ink)_4%,transparent)]`}>
         <span className={`${accent.text} text-xs pb-1.5 shrink-0`}>$</span>
         <textarea
           ref={inputRef}
@@ -322,10 +324,10 @@ export function TerminalPane({
             el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
           }}
           placeholder={isStreaming ? "running…" : "message this model…"}
-          className="flex-1 resize-none bg-transparent text-zinc-200 placeholder-zinc-600 text-[12.5px] outline-none disabled:opacity-50 leading-relaxed"
+          className="flex-1 resize-none bg-transparent text-ink placeholder-muted-2 text-[12.5px] outline-none disabled:opacity-50 leading-relaxed"
         />
         {isStreaming && (
-          <span className="w-3 h-3 mb-1.5 border-2 border-zinc-600 border-t-transparent rounded-full animate-spin shrink-0" />
+          <span className="w-3 h-3 mb-1.5 border-2 border-current border-t-transparent rounded-full animate-spin shrink-0 text-muted-2" />
         )}
       </div>
 
@@ -335,10 +337,10 @@ export function TerminalPane({
         onPointerMove={onGripPointerMove}
         onPointerUp={endGrip}
         onPointerCancel={endGrip}
-        className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize"
+        className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize z-10"
         style={{
           background:
-            "linear-gradient(135deg, transparent 0 50%, rgba(113,113,122,0.6) 50% 60%, transparent 60% 70%, rgba(113,113,122,0.6) 70% 80%, transparent 80%)",
+            "linear-gradient(135deg, transparent 0 50%, var(--line-strong) 50% 60%, transparent 60% 70%, var(--line-strong) 70% 80%, transparent 80%)",
         }}
         aria-label="Resize terminal"
       />

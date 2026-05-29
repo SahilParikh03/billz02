@@ -30,16 +30,16 @@ export function ActivityRail({ models, onOpen, providerMode }: ActivityRailProps
   }, [models]);
 
   return (
-    <aside className="hidden md:flex flex-col w-60 shrink-0 border-r border-zinc-800/80 bg-zinc-950/60">
+    <aside className="hidden md:flex flex-col w-60 shrink-0 border-r border-line bg-surface/40">
       {/* Section header */}
-      <div className="flex items-center justify-between px-3 h-9 border-b border-zinc-800/80">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-zinc-500">
+      <div className="flex items-center justify-between px-3.5 h-9 border-b border-line">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
           Models
         </span>
-        <span className="text-[10px] text-zinc-600 font-mono">{providerMode ?? ""}</span>
+        <span className="text-[10px] text-muted-2 font-mono">{providerMode ?? ""}</span>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-2 scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto py-2 scrollbar-thin">
         {/* Router (auto) entry */}
         <RailLeaf
           accentKey="auto"
@@ -49,7 +49,7 @@ export function ActivityRail({ models, onOpen, providerMode }: ActivityRailProps
         />
 
         {groups.length === 0 && (
-          <p className="px-3 py-3 text-[11px] text-zinc-600">Loading models…</p>
+          <p className="px-3.5 py-3 text-[11px] text-muted-2">Loading models…</p>
         )}
 
         {groups.map(([provider, list]) => {
@@ -82,8 +82,8 @@ export function ActivityRail({ models, onOpen, providerMode }: ActivityRailProps
         })}
       </div>
 
-      <div className="px-3 py-2 border-t border-zinc-800/80">
-        <p className="text-[10px] text-zinc-600 leading-snug">
+      <div className="px-3.5 py-2.5 border-t border-line">
+        <p className="text-[10px] text-muted-2 leading-snug">
           Click a model to open a terminal. Open as many as you like — each pays its own way.
         </p>
       </div>
@@ -107,13 +107,13 @@ function RailLeaf({
     <button
       onClick={onClick}
       title={`Open terminal · ${label}`}
-      className="group w-full flex items-center justify-between gap-2 pl-6 pr-3 py-1.5 text-left hover:bg-zinc-800/50 transition-colors"
+      className="group w-full flex items-center justify-between gap-2 pl-6 pr-3.5 py-1.5 text-left hover:bg-[color-mix(in_oklab,var(--ink)_5%,transparent)] transition-colors"
     >
       <span className="min-w-0">
-        <span className="block text-[12px] text-zinc-300 font-mono truncate group-hover:text-zinc-100">
+        <span className="block text-[12px] text-muted font-mono truncate group-hover:text-ink transition-colors">
           {label}
         </span>
-        {sub && <span className="block text-[10px] text-zinc-600 truncate">{sub}</span>}
+        {sub && <span className="block text-[10px] text-muted-2 truncate">{sub}</span>}
       </span>
       <span
         className={`shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-sm leading-none ${accent.text}`}
