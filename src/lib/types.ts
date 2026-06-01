@@ -300,4 +300,23 @@ export interface AppConfig {
     /** Embedding backend for the semantic layer; defaults to "local". */
     embedder?: EmbedderKind;
   };
+  /**
+   * Seller-side x402 paywall (Phase 1): when enabled, BEAMR charges callers
+   * per non-streaming completion in USDC over x402. Disabled by default, so
+   * the public endpoint stays free until `BEAMR_SELL_ENABLED` is set.
+   *
+   * Optional on the type so existing config fixtures need not specify it;
+   * `getConfig()` always populates it. Resolve via `resolveSell(cfg)`.
+   */
+  sell?: {
+    enabled: boolean;
+    /** Recipient address for settled payments (the BEAMR treasury / router). */
+    payTo?: string;
+    /** Flat price (USD) for a weak-tier completion. */
+    priceWeakUsd: number;
+    /** Flat price (USD) for a strong-tier completion. */
+    priceStrongUsd: number;
+    /** How long (s) a buyer's signed authorization stays valid for settlement. */
+    maxTimeoutSeconds: number;
+  };
 }

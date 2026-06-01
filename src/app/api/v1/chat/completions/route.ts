@@ -11,10 +11,19 @@
  * Budget exceeded: 402 JSON response BEFORE the stream starts.
  */
 
-import { getConfig } from "@/lib/config";
+import { getConfig, resolveSell } from "@/lib/config";
 import { newId } from "@/lib/ids";
-import type { ChatCompletionRequest } from "@/lib/types";
+import type { AppConfig, ChatCompletionRequest } from "@/lib/types";
 import { executeChat } from "@/pipeline/execute";
+import { priceQuote } from "@/payment/quote";
+import {
+  buildPaymentRequirements,
+  decodePaymentHeader,
+  paymentRequiredBody,
+  settlePayment,
+  verifyPayment,
+} from "@/payment/seller";
+import type { FacilitatorConfig, PaymentPayload, PaymentRequirements } from "x402/types";
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream; charset=utf-8",
@@ -25,6 +34,85 @@ const SSE_HEADERS = {
 
 /** Pipeline errors that mean "out of money" → surfaced as HTTP 402. */
 const BUDGET_ERRORS = new Set(["session budget exceeded", "credit exhausted"]);
+
+/** Context threaded from the pre-work verify to the post-work settle. */
+interface SettleContext {
+  payload: PaymentPayload;
+  reqs: PaymentRequirements;
+  facilitator: FacilitatorConfig;
+}
+
+/**
+ * Seller-side x402 paywall preflight (Phase 1, non-streaming only).
+ *
+ * Returns:
+ *  - a `Response` to short-circuit POST (402 unpaid / 400 / 500 misconfig), or
+ *  - a `SettleContext` when the buyer's payment verified and work may proceed, or
+ *  - `null` when the paywall is disabled (free path; unchanged behavior).
+ *
+ * Settlement is intentionally deferred to AFTER the completion succeeds.
+ */
+async function preflightPaywall(
+  cfg: AppConfig,
+  body: ChatCompletionRequest,
+  request: Request,
+  sessionId: string,
+): Promise<Response | SettleContext | null> {
+  const sell = resolveSell(cfg);
+  if (!sell.enabled) return null;
+
+  const errHeaders = { "X-Beamr-Session": sessionId };
+
+  // Phase 1 only meters the buffered, non-streaming path (streaming paid access
+  // is the credit-balance model in a later phase).
+  if (body.stream !== false) {
+    return Response.json(
+      {
+        error: {
+          message: "paid access requires stream:false in this phase",
+          type: "invalid_request_error",
+        },
+      },
+      { status: 400, headers: errHeaders },
+    );
+  }
+  if (!sell.payTo) {
+    return Response.json(
+      {
+        error: {
+          message: "seller misconfigured: BEAMR_SELL_PAY_TO is unset",
+          type: "server_error",
+        },
+      },
+      { status: 500, headers: errHeaders },
+    );
+  }
+
+  const quote = priceQuote(body.messages ?? [], cfg);
+  const reqs = buildPaymentRequirements(cfg, {
+    atomicUsdc: quote.atomicUsdc,
+    resource: new URL(request.url).pathname,
+    description: `BEAMR inference (${quote.tier} tier)`,
+  });
+
+  const payload = decodePaymentHeader(request.headers.get("x-payment"));
+  if (!payload) {
+    return Response.json(paymentRequiredBody(reqs, "payment required"), {
+      status: 402,
+      headers: errHeaders,
+    });
+  }
+
+  const verdict = await verifyPayment(cfg, payload, reqs);
+  if (!verdict.ok || !verdict.facilitator) {
+    return Response.json(
+      paymentRequiredBody(reqs, `payment invalid: ${verdict.reason ?? "unknown"}`),
+      { status: 402, headers: errHeaders },
+    );
+  }
+
+  return { payload, reqs, facilitator: verdict.facilitator };
+}
 
 export async function POST(request: Request): Promise<Response> {
   let body: ChatCompletionRequest;
@@ -47,6 +135,11 @@ export async function POST(request: Request): Promise<Response> {
   const traceId = newId("trace");
   const requestId = newId("chatcmpl");
   const created = Math.floor(Date.now() / 1000);
+
+  // ── Seller-side x402 paywall (no-op unless BEAMR_SELL_ENABLED) ──────────────
+  const gate = await preflightPaywall(cfg, body, request, sessionId);
+  if (gate instanceof Response) return gate;
+  const settleCtx: SettleContext | null = gate;
 
   // ── Non-streaming mode ─────────────────────────────────────────────────────
   if (body.stream === false) {
@@ -82,6 +175,35 @@ export async function POST(request: Request): Promise<Response> {
       }
     }
 
+    const headers: Record<string, string> = {
+      "X-Beamr-Session": sessionId,
+      "X-Beamr-Trace": traceId,
+    };
+
+    // Settle only on the success path — the completion was produced, so move
+    // the exact authorized amount and attach the receipt. A settlement failure
+    // here is rare (the payment already verified) but we surface it as 402
+    // rather than handing back unpaid output.
+    if (settleCtx) {
+      const settled = await settlePayment(
+        settleCtx.facilitator,
+        settleCtx.payload,
+        settleCtx.reqs,
+      );
+      if (!settled.success) {
+        return Response.json(
+          {
+            error: {
+              message: `settlement failed: ${settled.error ?? "unknown"}`,
+              type: "payment_error",
+            },
+          },
+          { status: 402, headers: { "X-Beamr-Session": sessionId } },
+        );
+      }
+      if (settled.header) headers["X-PAYMENT-RESPONSE"] = settled.header;
+    }
+
     return Response.json(
       {
         id: requestId,
@@ -101,9 +223,7 @@ export async function POST(request: Request): Promise<Response> {
           total_tokens: (inputTokens ?? 0) + (outputTokens ?? 0),
         },
       },
-      {
-        headers: { "X-Beamr-Session": sessionId, "X-Beamr-Trace": traceId },
-      },
+      { headers },
     );
   }
 
