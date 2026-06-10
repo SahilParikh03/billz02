@@ -11,6 +11,24 @@ function bool(v: string | undefined, fallback: boolean): boolean {
   return v === "1" || v.toLowerCase() === "true";
 }
 
+/** Seller-side paywall defaults — single source for getConfig + resolveSell. */
+const SELL_DEFAULTS: NonNullable<AppConfig["sell"]> = {
+  enabled: false,
+  payTo: undefined,
+  priceWeakUsd: 0.002,
+  priceStrongUsd: 0.01,
+  maxTimeoutSeconds: 120,
+};
+
+/**
+ * Resolve the seller config, falling back to defaults when a caller passes an
+ * AppConfig that omits `sell` (e.g. test fixtures). `getConfig()` always sets
+ * it, so in the live request path this is a passthrough.
+ */
+export function resolveSell(cfg: AppConfig): NonNullable<AppConfig["sell"]> {
+  return cfg.sell ?? SELL_DEFAULTS;
+}
+
 /**
  * Read configuration from the environment.
  *
@@ -52,6 +70,17 @@ export function getConfig(): AppConfig {
       ttlMs: num(process.env.BEAMR_CACHE_TTL_MS, 24 * 60 * 60 * 1000),
       maxEntries: num(process.env.BEAMR_CACHE_MAX_ENTRIES, 500),
       embedder: process.env.BEAMR_EMBEDDER === "minilm" ? "minilm" : "local",
+    },
+    sell: {
+      ...SELL_DEFAULTS,
+      enabled: bool(process.env.BEAMR_SELL_ENABLED, SELL_DEFAULTS.enabled),
+      payTo: process.env.BEAMR_SELL_PAY_TO || undefined,
+      priceWeakUsd: num(process.env.BEAMR_SELL_PRICE_WEAK_USD, SELL_DEFAULTS.priceWeakUsd),
+      priceStrongUsd: num(process.env.BEAMR_SELL_PRICE_STRONG_USD, SELL_DEFAULTS.priceStrongUsd),
+      maxTimeoutSeconds: num(
+        process.env.BEAMR_SELL_MAX_TIMEOUT_SECONDS,
+        SELL_DEFAULTS.maxTimeoutSeconds,
+      ),
     },
   };
 }
