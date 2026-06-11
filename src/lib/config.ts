@@ -44,6 +44,9 @@ export function getConfig(): AppConfig {
     anthropic: {
       baseUrl: process.env.ANTHROPIC_BASE_URL || undefined,
     },
+    openrouter: {
+      baseUrl: process.env.OPENROUTER_BASE_URL || undefined,
+    },
     routing: {
       difficultyThreshold: num(process.env.BEAMR_DIFFICULTY_THRESHOLD, 0.5),
       latencyWeight: num(process.env.BEAMR_LATENCY_WEIGHT, 0),
