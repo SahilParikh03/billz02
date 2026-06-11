@@ -5,6 +5,7 @@ import {
   getCreditBalance,
   hasCredit,
   chargeCredit,
+  addCredit,
   creditStatus,
 } from "./credit";
 import { resetStore } from "./store";
@@ -65,6 +66,26 @@ describe("credit ledger", () => {
     await grantWelcomeCredit(WALLET, 1);
     expect(await chargeCredit(WALLET, 0)).toBe(1);
     expect(await chargeCredit(WALLET, -1)).toBe(1);
+  });
+
+  it("addCredit tops up a never-granted user (no welcome grant required)", async () => {
+    expect(await getCreditBalance(WALLET)).toBe(0);
+    expect(await addCredit(WALLET, 5)).toBeCloseTo(5, 5);
+    expect(await hasCredit(WALLET)).toBe(true);
+    // Top-up alone does not flip the welcome-grant marker.
+    expect((await creditStatus(WALLET)).granted).toBe(false);
+  });
+
+  it("addCredit stacks on the existing balance and round-trips with chargeCredit", async () => {
+    await grantWelcomeCredit(WALLET, 1);
+    expect(await addCredit(WALLET, 2.5)).toBeCloseTo(3.5, 5);
+    expect(await chargeCredit(WALLET, 0.5)).toBeCloseTo(3.0, 5);
+  });
+
+  it("addCredit is a no-op for non-positive amounts", async () => {
+    await grantWelcomeCredit(WALLET, 1);
+    expect(await addCredit(WALLET, 0)).toBe(1);
+    expect(await addCredit(WALLET, -3)).toBe(1);
   });
 
   it("creditStatus reflects grant + remaining balance", async () => {

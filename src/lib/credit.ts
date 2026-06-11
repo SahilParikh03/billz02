@@ -88,6 +88,22 @@ export async function chargeCredit(
   return next;
 }
 
+/**
+ * Add `amountUsd` to the user's credit balance — the positive counterpart to
+ * {@link chargeCredit}, sharing the same balance key. This is how a settled
+ * prepaid top-up (USDC paid to the treasury) becomes spendable credit; it is
+ * independent of the one-time welcome grant, so it works for a user who was
+ * never granted. Returns the new balance. A no-op for non-positive amounts.
+ */
+export async function addCredit(
+  userId: string,
+  amountUsd: number,
+): Promise<number> {
+  const amt = Math.max(0, amountUsd);
+  if (amt === 0) return getCreditBalance(userId);
+  return getStore().incrByFloat(balanceKey(userId), amt);
+}
+
 /** Full credit status for a user. */
 export async function creditStatus(userId: string): Promise<CreditStatus> {
   const [balance, granted] = await Promise.all([
