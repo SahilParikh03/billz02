@@ -4,14 +4,17 @@ import { createVeniceAdapter } from "./venice";
 import { createHyperbolicAdapter } from "./hyperbolic";
 import { createSurplusAdapter } from "./surplus";
 import { createAnthropicAdapter } from "./anthropic";
+import { createOpenRouterAdapter } from "./openrouter";
 
 /**
  * Build the active provider set for the current config.
  * - mock mode → just the offline mock provider.
  * - live mode → Hyperbolic + Surplus (pure x402; the funded wallet pays), plus
  *   key-gated credit-balance providers:
- *     · Venice    when VENICE_API_KEY is set
- *     · Anthropic when ANTHROPIC_API_KEY is set
+ *     · Venice     when VENICE_API_KEY is set
+ *     · Anthropic  when ANTHROPIC_API_KEY is set
+ *     · OpenRouter when OPENROUTER_API_KEY is set (OpenAI-compatible; a second
+ *                  route to Claude for accounts that can't fund Anthropic direct)
  *   Without its key, every request to a credit-balance provider would just 402 /
  *   401, so including it would only add a guaranteed-fail hop to routing and
  *   failover and surface dead models in the list. Failover across the active set
@@ -27,6 +30,7 @@ export function getProviders(cfg: AppConfig): ProviderAdapter[] {
   // in when configured (unshifted so they lead routing/failover order).
   if (process.env.VENICE_API_KEY) providers.unshift(createVeniceAdapter(cfg));
   if (process.env.ANTHROPIC_API_KEY) providers.unshift(createAnthropicAdapter(cfg));
+  if (process.env.OPENROUTER_API_KEY) providers.unshift(createOpenRouterAdapter(cfg));
   return providers;
 }
 
