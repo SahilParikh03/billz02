@@ -20,6 +20,11 @@ const SELL_DEFAULTS: NonNullable<AppConfig["sell"]> = {
   maxTimeoutSeconds: 120,
 };
 
+/** Cost-plus pricing defaults — single source for getConfig + resolvePricing. */
+const PRICING_DEFAULTS: NonNullable<AppConfig["pricing"]> = {
+  marginMultiplier: 1.3,
+};
+
 /**
  * Resolve the seller config, falling back to defaults when a caller passes an
  * AppConfig that omits `sell` (e.g. test fixtures). `getConfig()` always sets
@@ -27,6 +32,15 @@ const SELL_DEFAULTS: NonNullable<AppConfig["sell"]> = {
  */
 export function resolveSell(cfg: AppConfig): NonNullable<AppConfig["sell"]> {
   return cfg.sell ?? SELL_DEFAULTS;
+}
+
+/**
+ * Resolve the cost-plus pricing config, falling back to defaults when a caller
+ * passes an AppConfig that omits `pricing` (e.g. test fixtures). `getConfig()`
+ * always sets it, so in the live request path this is a passthrough.
+ */
+export function resolvePricing(cfg: AppConfig): NonNullable<AppConfig["pricing"]> {
+  return cfg.pricing ?? PRICING_DEFAULTS;
 }
 
 /**
@@ -86,6 +100,12 @@ export function getConfig(): AppConfig {
       maxTimeoutSeconds: num(
         process.env.BEAMR_SELL_MAX_TIMEOUT_SECONDS,
         SELL_DEFAULTS.maxTimeoutSeconds,
+      ),
+    },
+    pricing: {
+      marginMultiplier: num(
+        process.env.BEAMR_MARGIN_MULTIPLIER,
+        PRICING_DEFAULTS.marginMultiplier,
       ),
     },
   };

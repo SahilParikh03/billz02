@@ -1,5 +1,6 @@
 import type {
   AppConfig,
+  ChatMessage,
   Classification,
   ModelInfo,
   QueryClass,
@@ -8,6 +9,7 @@ import type {
 } from "@/lib/types";
 import { getProviders } from "@/providers/index";
 import { learnedQuality } from "@/lib/quality";
+import { classify } from "./classify";
 
 /**
  * Candidate scoring for the strong/weak cascade.
@@ -96,4 +98,30 @@ export function scoreCandidates(
 
   out.sort((a, b) => a.score - b.score);
   return out;
+}
+
+/**
+ * Estimate the USD provider cost of serving a request — the cost-plus pricing
+ * input shared by the credit and x402 lanes.
+ *
+ * classify → pick the cascade tier (same `difficultyThreshold` routing uses) →
+ * take the representative in-tier model: the cheapest candidate in that tier,
+ * i.e. the one the (frugal) router would actually pick. Reuses {@link classify},
+ * {@link approxTokens}, and {@link scoreCandidates} so the estimate tracks the
+ * real routing math rather than duplicating it.
+ *
+ * Pure and synchronous (no network). Returns 0 when no candidate models are
+ * available, signaling callers (e.g. `priceQuote`) to fall back to a flat price.
+ */
+export function estimateCostUsd(messages: ChatMessage[], cfg: AppConfig): number {
+  const classification = classify(messages);
+  const inputTokens = approxTokens(messages.map((m) => m.content).join(" "));
+  const tier: Tier =
+    classification.difficulty >= cfg.routing.difficultyThreshold ? "strong" : "weak";
+  const scored = scoreCandidates(cfg, classification, inputTokens);
+  if (scored.length === 0) return 0;
+  const inTier = scored.filter((c) => c.tier === tier);
+  // Cheapest in the tier (scored ascending); fall back to the cheapest overall
+  // if the tier is empty — mirrors the cascade pool fallback in select.ts.
+  return (inTier.length > 0 ? inTier : scored)[0].estCostUsd;
 }

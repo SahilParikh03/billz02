@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { priceQuote, quoteUsdForTier, toAtomicUsdc } from "./quote";
+import { withMargin } from "./margin";
+import { estimateCostUsd } from "@/policy/score";
 import type { AppConfig, ChatMessage } from "@/lib/types";
 
-function cfg(over: Partial<AppConfig["sell"]> = {}): AppConfig {
+function cfg(over: Partial<AppConfig["sell"]> = {}, rest: Partial<AppConfig> = {}): AppConfig {
   return {
     providerMode: "live",
     sessionBudgetUsd: 5,
@@ -21,10 +23,22 @@ function cfg(over: Partial<AppConfig["sell"]> = {}): AppConfig {
       maxTimeoutSeconds: 120,
       ...over,
     },
+    ...rest,
   } as AppConfig;
 }
 
+// Mock-mode config: the mock provider carries real per-token prices (mock-strong
+// is pricey: 3.75/18.75 per 1M), so a hard prompt's cost-plus quote lands well
+// above the flat strong floor — exercising the genuine cost-plus path.
+function mockCfg(over: Partial<AppConfig["sell"]> = {}, rest: Partial<AppConfig> = {}): AppConfig {
+  return cfg(over, { providerMode: "mock", ...rest });
+}
+
 const msg = (content: string): ChatMessage[] => [{ role: "user", content }];
+
+const HARD =
+  "design a rate limiter: walk through the algorithm, analyze the " +
+  "tradeoffs, and compare token-bucket vs sliding-window in detail";
 
 describe("toAtomicUsdc", () => {
   it("converts USD to 6-decimal atomic units", () => {
@@ -81,5 +95,40 @@ describe("priceQuote", () => {
     expect(priceQuote(msg("hi"), cfg()).tier).toBe("weak");
     const allStrong = { ...cfg(), routing: { difficultyThreshold: 0, latencyWeight: 0, qualityWeight: 0 } };
     expect(priceQuote(msg("hi"), allStrong).tier).toBe("strong");
+  });
+});
+
+describe("priceQuote — cost-plus", () => {
+  it("holds at the flat-tier floor when cost-plus is below it (cheap call)", () => {
+    // "hi" costs a fraction of a cent to serve, so its cost-plus is far below the
+    // flat weak rate → the quote clamps up to the floor.
+    const q = priceQuote(msg("hi"), mockCfg());
+    expect(q.tier).toBe("weak");
+    expect(q.usd).toBe(0.002);
+    expect(q.atomicUsdc).toBe(BigInt(2000));
+  });
+
+  it("charges true cost-plus when it exceeds the flat-tier floor (expensive call)", () => {
+    const c = mockCfg();
+    const q = priceQuote(msg(HARD), c);
+    const expected = withMargin(estimateCostUsd(msg(HARD), c), c);
+    expect(q.tier).toBe("strong");
+    // Cost-plus, not the flat $0.01 strong rate — margin is protected.
+    expect(q.usd).toBeGreaterThan(quoteUsdForTier("strong", c));
+    expect(q.usd).toBeCloseTo(expected, 10);
+  });
+
+  it("clamps the cost-plus quote to maxPaymentPerCallUsd (pre-paid overshoot bound)", () => {
+    const c = mockCfg({}, { maxPaymentPerCallUsd: 0.02 });
+    const q = priceQuote(msg(HARD), c);
+    // Uncapped cost-plus exceeds $0.02 here, so the quote pins to the cap.
+    expect(q.usd).toBe(0.02);
+    expect(q.atomicUsdc).toBe(BigInt(20000));
+  });
+
+  it("scales with the margin multiplier", () => {
+    const lo = priceQuote(msg(HARD), mockCfg({}, { pricing: { marginMultiplier: 1.1 } }));
+    const hi = priceQuote(msg(HARD), mockCfg({}, { pricing: { marginMultiplier: 2.0 } }));
+    expect(hi.usd).toBeGreaterThan(lo.usd);
   });
 });

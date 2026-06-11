@@ -6,7 +6,13 @@ describe("policy modes", () => {
     delete process.env.BEAMR_POLICY_MODE;
   });
 
-  it("defaults to balanced", () => {
+  it("defaults to frugal (cheap-tier bias when nothing is set)", () => {
+    delete process.env.BEAMR_POLICY_MODE;
+    expect(resolvePolicyMode()).toBe("frugal");
+  });
+
+  it("honors the env mode over the frugal default", () => {
+    process.env.BEAMR_POLICY_MODE = "balanced";
     expect(resolvePolicyMode()).toBe("balanced");
   });
 
