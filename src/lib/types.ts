@@ -340,4 +340,16 @@ export interface AppConfig {
     /** How long (s) a buyer's signed authorization stays valid for settlement. */
     maxTimeoutSeconds: number;
   };
+  /**
+   * Cost-plus pricing (Phase A). Both paid lanes charge realized/estimated
+   * provider cost × {@link marginMultiplier} so every paid call recovers cost
+   * plus a margin, rather than a flat per-tier price.
+   *
+   * Optional on the type so existing config fixtures need not specify it;
+   * `getConfig()` always populates it. Resolve via `resolvePricing(cfg)`.
+   */
+  pricing?: {
+    /** Charge `costUsd × this`. Default 1.3 (a 30% margin over cost). */
+    marginMultiplier: number;
+  };
 }
