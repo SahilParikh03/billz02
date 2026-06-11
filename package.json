@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.1",
     "@coinbase/cdp-core": "^0.0.108",
     "@coinbase/cdp-hooks": "^0.0.108",
     "@coinbase/x402": "^2.1.0",
