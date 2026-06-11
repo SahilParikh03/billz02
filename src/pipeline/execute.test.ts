@@ -6,6 +6,7 @@ import { getBudgetStatus, recordSpend } from "@/payment/budget";
 import { resetStore } from "@/lib/store";
 import { resetCache } from "@/pipeline/cache";
 import { grantWelcomeCredit, getCreditBalance } from "@/lib/credit";
+import { withMargin } from "@/payment/margin";
 import type { SpendEvent, StreamEvent } from "@/lib/types";
 
 /** Collect all events from executeChat into an array. */
@@ -164,7 +165,7 @@ describe("executeChat — signed-in welcome credit", () => {
     resetStore();
   });
 
-  it("refuses a wallet user who has no credit (and never granted)", async () => {
+  it("refuses a wallet user who has no credit (and never granted) with a top-up prompt", async () => {
     const events = await collect(
       getConfig(),
       { messages: [{ role: "user", content: "no credit yet" }] },
@@ -172,10 +173,28 @@ describe("executeChat — signed-in welcome credit", () => {
     );
     expect(events.length).toBe(1);
     expect(events[0].type).toBe("error");
-    if (events[0].type === "error") expect(events[0].error).toBe("credit exhausted");
+    if (events[0].type === "error") {
+      expect(events[0].error).toBe("insufficient credit — top up");
+    }
   });
 
-  it("serves a wallet user with credit and deducts the charge from their balance", async () => {
+  it("refuses a wallet user whose balance is below the cost-plus charge", async () => {
+    // A balance that is positive but smaller than even the cheapest call's
+    // cost-plus price must still prompt a top-up — not serve on partial credit.
+    await grantWelcomeCredit(WALLET, 1e-9);
+    const events = await collect(
+      getConfig(),
+      { messages: [{ role: "user", content: "almost broke" }] },
+      { sessionId: sid, userId: WALLET, traceId: "credit-low" },
+    );
+    expect(events.length).toBe(1);
+    expect(events[0].type).toBe("error");
+    if (events[0].type === "error") {
+      expect(events[0].error).toBe("insufficient credit — top up");
+    }
+  });
+
+  it("serves a wallet user with credit and deducts cost-plus (cost × margin) from their balance", async () => {
     await grantWelcomeCredit(WALLET, 1);
     const before = await getCreditBalance(WALLET);
 
@@ -190,7 +209,10 @@ describe("executeChat — signed-in welcome credit", () => {
     const after = await getCreditBalance(WALLET);
     expect(after).toBeLessThan(before);
     if (done && done.type === "done") {
-      expect(before - after).toBeCloseTo(done.result.usdcCharged, 8);
+      // The balance drops by the cost-plus price, not the raw provider cost.
+      const expected = withMargin(done.result.usdcCharged, getConfig());
+      expect(before - after).toBeCloseTo(expected, 8);
+      expect(expected).toBeGreaterThan(done.result.usdcCharged); // margin > 1
     }
   });
 

@@ -14,6 +14,7 @@
 import { getConfig, resolveSell } from "@/lib/config";
 import { newId } from "@/lib/ids";
 import type { AppConfig, ChatCompletionRequest } from "@/lib/types";
+import { isWalletUser } from "@/lib/credit";
 import { executeChat } from "@/pipeline/execute";
 import { priceQuote } from "@/payment/quote";
 import {
@@ -33,7 +34,10 @@ const SSE_HEADERS = {
 };
 
 /** Pipeline errors that mean "out of money" → surfaced as HTTP 402. */
-const BUDGET_ERRORS = new Set(["session budget exceeded", "credit exhausted"]);
+const BUDGET_ERRORS = new Set([
+  "session budget exceeded",
+  "insufficient credit — top up",
+]);
 
 /** Context threaded from the pre-work verify to the post-work settle. */
 interface SettleContext {
@@ -136,8 +140,16 @@ export async function POST(request: Request): Promise<Response> {
   const requestId = newId("chatcmpl");
   const created = Math.floor(Date.now() / 1000);
 
-  // ── Seller-side x402 paywall (no-op unless BEAMR_SELL_ENABLED) ──────────────
-  const gate = await preflightPaywall(cfg, body, request, sessionId);
+  // ── Lane selection by caller identity ───────────────────────────────────────
+  // Signed-in wallet users pay from their prepaid credit balance: streaming is
+  // allowed and the cost-plus charge happens in the pipeline, so they bypass the
+  // x402 machine paywall (and its non-streaming-only guard). The pipeline still
+  // enforces a sufficient balance and returns 402 "top up" when short. Anonymous
+  // / agent callers go through the x402 preflight (no-op unless BEAMR_SELL_ENABLED).
+  const creditLane = isWalletUser(userId);
+  const gate = creditLane
+    ? null
+    : await preflightPaywall(cfg, body, request, sessionId);
   if (gate instanceof Response) return gate;
   const settleCtx: SettleContext | null = gate;
 

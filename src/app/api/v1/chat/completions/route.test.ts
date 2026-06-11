@@ -1,5 +1,8 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { POST } from "./route";
+import { grantWelcomeCredit } from "@/lib/credit";
+import { resetStore } from "@/lib/store";
+import { resetCache } from "@/pipeline/cache";
 
 /**
  * Route-level tests for the seller-side x402 paywall wiring (Phase 1).
@@ -21,6 +24,8 @@ const SELL_ENV = [
 
 afterEach(() => {
   for (const k of SELL_ENV) delete process.env[k];
+  resetStore(); // isolate the credit/budget ledger between cases
+  resetCache(); // a cached "hi" would otherwise bypass routing + the credit gate
 });
 
 function post(body: unknown, headers: Record<string, string> = {}): Promise<Response> {
@@ -86,5 +91,44 @@ describe("POST /api/v1/chat/completions — paywall on", () => {
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: { message: string } };
     expect(body.error.message).toMatch(/BEAMR_SELL_PAY_TO/);
+  });
+});
+
+describe("POST /api/v1/chat/completions — credit lane (signed-in wallet users)", () => {
+  const WALLET = "0x" + "9a".repeat(20); // valid 0x…40-hex wallet id
+
+  function enable() {
+    process.env.BEAMR_SELL_ENABLED = "1";
+    process.env.BEAMR_NETWORK = "base-sepolia";
+    process.env.BEAMR_SELL_PAY_TO = "0x" + "1".repeat(40);
+  }
+
+  it("serves a funded wallet user a STREAMING response, bypassing the x402 non-streaming guard", async () => {
+    // Same paywall-on config that 400s an anonymous streaming request — but a
+    // signed-in wallet user with credit takes the credit lane, so streaming works.
+    enable();
+    await grantWelcomeCredit(WALLET, 1);
+
+    const res = await post(
+      { messages: [{ role: "user", content: "hi" }], stream: true },
+      { "X-Beamr-User": WALLET },
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toMatch(/text\/event-stream/);
+    await res.body?.cancel(); // release the stream
+  });
+
+  it("returns 402 'top up' for a wallet user with no credit (instead of x402 / 400)", async () => {
+    enable();
+    const res = await post(
+      { messages: [{ role: "user", content: "hi" }], stream: true },
+      { "X-Beamr-User": WALLET },
+    );
+
+    expect(res.status).toBe(402);
+    const body = (await res.json()) as { error: { message: string; type: string } };
+    expect(body.error.message).toMatch(/top up/);
+    expect(body.error.type).toBe("budget_exceeded");
   });
 });
