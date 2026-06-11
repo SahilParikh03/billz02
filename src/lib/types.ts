@@ -11,12 +11,17 @@ import type { Hex } from "viem";
 
 // ── Providers ───────────────────────────────────────────────────────────────
 
-export type ProviderId = "venice" | "hyperbolic" | "surplus" | "mock";
+export type ProviderId =
+  | "venice"
+  | "hyperbolic"
+  | "surplus"
+  | "anthropic"
+  | "mock";
 
 /**
  * How a given call was paid for.
  * - `x402-percall`   real per-call USDC settlement on-chain (Hyperbolic).
- * - `credit-balance` burned from a pre-funded provider balance (Venice).
+ * - `credit-balance` burned from a pre-funded provider balance (Venice, Anthropic).
  * - `mock`           simulated; no wallet or network involved.
  */
 export type PaymentMode = "x402-percall" | "credit-balance" | "mock";
@@ -283,6 +288,13 @@ export interface AppConfig {
   walletPrivateKey?: Hex;
   venice: { baseUrl: string };
   hyperbolic: { url: string };
+  /**
+   * Anthropic (Claude) provider. Optional on the type so existing config
+   * fixtures need not specify it; `getConfig()` always populates it. The API
+   * key is read from `ANTHROPIC_API_KEY` in the adapter (mirrors Venice), so
+   * only the optional base-URL override lives here.
+   */
+  anthropic?: { baseUrl?: string };
   routing: {
     /** difficulty ≥ this → strong tier, else weak tier. */
     difficultyThreshold: number;

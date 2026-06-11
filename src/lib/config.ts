@@ -59,6 +59,9 @@ export function getConfig(): AppConfig {
         process.env.HYPERBOLIC_X402_URL ||
         "https://hyperbolic-x402.vercel.app/v1/chat/completions",
     },
+    anthropic: {
+      baseUrl: process.env.ANTHROPIC_BASE_URL || undefined,
+    },
     routing: {
       difficultyThreshold: num(process.env.BEAMR_DIFFICULTY_THRESHOLD, 0.5),
       latencyWeight: num(process.env.BEAMR_LATENCY_WEIGHT, 0),

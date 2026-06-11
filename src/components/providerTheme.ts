@@ -49,6 +49,15 @@ const THEME: Record<string, Accent> = {
     ring: "ring-violet-500/40",
     glow: "rgba(167,139,250,0.25)",
   },
+  anthropic: {
+    name: "anthropic",
+    text: "text-orange-300",
+    border: "border-orange-500/40",
+    headerBg: "bg-orange-500/10",
+    dot: "bg-orange-400",
+    ring: "ring-orange-500/40",
+    glow: "rgba(251,146,60,0.25)",
+  },
   mock: {
     name: "mock",
     text: "text-amber-300",
