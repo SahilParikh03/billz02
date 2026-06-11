@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAccount } from "./account";
+import { TopUpControl } from "./TopUpControl";
 
 function truncate(addr: string): string {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
@@ -73,6 +74,7 @@ export function AuthMenu() {
                   {account.credit != null ? `$${account.credit.toFixed(3)}` : "—"}
                 </span>
               </div>
+              <TopUpControl />
               <button
                 onClick={() => {
                   setOpen(false);
