@@ -16,12 +16,13 @@ export type ProviderId =
   | "hyperbolic"
   | "surplus"
   | "anthropic"
+  | "openrouter"
   | "mock";
 
 /**
  * How a given call was paid for.
  * - `x402-percall`   real per-call USDC settlement on-chain (Hyperbolic).
- * - `credit-balance` burned from a pre-funded provider balance (Venice, Anthropic).
+ * - `credit-balance` burned from a pre-funded provider balance (Venice, Anthropic, OpenRouter).
  * - `mock`           simulated; no wallet or network involved.
  */
 export type PaymentMode = "x402-percall" | "credit-balance" | "mock";
@@ -295,6 +296,14 @@ export interface AppConfig {
    * only the optional base-URL override lives here.
    */
   anthropic?: { baseUrl?: string };
+  /**
+   * OpenRouter provider (OpenAI-compatible aggregator; a second route to Claude).
+   * Optional on the type so existing config fixtures need not specify it;
+   * `getConfig()` always populates it. The API key is read from
+   * `OPENROUTER_API_KEY` in the adapter (mirrors Venice), so only the optional
+   * base-URL override lives here.
+   */
+  openrouter?: { baseUrl?: string };
   routing: {
     /** difficulty ≥ this → strong tier, else weak tier. */
     difficultyThreshold: number;
