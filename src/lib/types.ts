@@ -285,7 +285,6 @@ export interface AppConfig {
   welcomeCreditUsd?: number;
   maxPaymentPerCallUsd: number;
   network: string; // "base-sepolia" | "base"
-  facilitatorUrl: string;
   walletPrivateKey?: Hex;
   venice: { baseUrl: string };
   hyperbolic: { url: string };

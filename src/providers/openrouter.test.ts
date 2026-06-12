@@ -10,7 +10,6 @@ const MOCK_CFG: AppConfig = {
   sessionBudgetUsd: 5,
   maxPaymentPerCallUsd: 0.1,
   network: "base-sepolia",
-  facilitatorUrl: "https://x402.org/facilitator",
   walletPrivateKey: undefined,
   venice: { baseUrl: "https://api.venice.ai/api/v1" },
   hyperbolic: { url: "https://hyperbolic-x402.vercel.app/v1/chat/completions" },

@@ -2,12 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { resetStore } from "@/lib/store";
 import { getCreditBalance } from "@/lib/credit";
 
-// Mock the facilitator so verify/settle never touch the network (same approach
-// as seller.test.ts). decode/build still run for real against x402 schemas.
+// Mock the in-process facilitator so verify/settle never touch viem/the chain
+// (same approach as seller.test.ts). decode/build still run for real against
+// x402 schemas.
 const verify = vi.fn();
 const settle = vi.fn();
-vi.mock("x402/verify", () => ({
-  useFacilitator: vi.fn(() => ({ verify, settle })),
+vi.mock("@/payment/localFacilitator", () => ({
+  createLocalFacilitator: vi.fn(() => ({ verify, settle })),
 }));
 
 import { POST } from "./route";

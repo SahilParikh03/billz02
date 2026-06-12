@@ -5,9 +5,9 @@ import { useSession } from "./useSession";
 import { useHealth } from "./useHealth";
 import { useModels } from "./useModels";
 import { useSpendFeed } from "./useSpendFeed";
-import { useAccount } from "./cdp/account";
+import { useAccount } from "./account";
 import { useWorkspace } from "./useWorkspace";
-import { AuthMenu } from "./cdp/AuthMenu";
+import { AuthMenu } from "./AuthMenu";
 import { ThemeToggle } from "./ThemeToggle";
 import { ActivityRail } from "./ActivityRail";
 import { TerminalPane } from "./TerminalPane";
@@ -26,7 +26,7 @@ export function BeamrApp() {
   const [feedOpen, setFeedOpen] = useState(false);
 
   const onSettled = useCallback(() => {
-    if (account.enabled && account.address) account.refreshCredit();
+    if (account.identity) account.refreshCredit();
   }, [account]);
 
   // The pane with the highest z-index is the focused one.
@@ -144,7 +144,7 @@ export function BeamrApp() {
               key={pane.id}
               pane={pane}
               sessionId={sessionId}
-              userId={account.address}
+              userId={account.identity?.id ?? null}
               events={events}
               focused={pane.id === focusedId}
               onFocus={focusPane}

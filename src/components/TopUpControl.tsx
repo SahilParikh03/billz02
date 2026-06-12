@@ -6,15 +6,15 @@ import { useAccount } from "./account";
 const PRESETS = [1, 5, 20];
 
 /**
- * "Add credit" control for the signed-in account popover.
+ * "Add credit" control for the signed-in account popover (Phase E).
  *
- * Pick an amount → {@link useAccount}.topUp pays USDC from the embedded wallet
- * over x402 and credits the settled amount. Shows in-flight, success (with the
- * settlement tx), and error states. Pure UI over the account context — no CDP or
- * x402 imports here; all of that lives behind `topUp`.
+ * Routes by identity: a connected wallet pays USDC over x402 (`topUp`); an email
+ * identity goes to Stripe Checkout (`payByCard`, which redirects). Shows
+ * in-flight / success / error states. Pure UI over the account context.
  */
 export function TopUpControl() {
   const account = useAccount();
+  const isWallet = account.identity?.kind === "wallet";
   const [busy, setBusy] = useState<number | null>(null);
   const [done, setDone] = useState<{ credited?: number; txHash?: string | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,17 +26,24 @@ export function TopUpControl() {
     setBusy(amount);
     setError(null);
     setDone(null);
-    const result = await account.topUp(amount);
-    setBusy(null);
-    if (result.ok) setDone({ credited: result.credited, txHash: result.txHash });
-    else setError(result.error ?? "Top-up failed. Try again.");
+    if (isWallet) {
+      const result = await account.topUp(amount);
+      setBusy(null);
+      if (result.ok) setDone({ credited: result.credited, txHash: result.txHash });
+      else setError(result.error ?? "Top-up failed. Try again.");
+    } else {
+      // Card rail: this redirects to Stripe on success; only errors return here.
+      const result = await account.payByCard(amount);
+      setBusy(null);
+      if (!result.ok) setError(result.error ?? "Could not start checkout. Try again.");
+    }
   }
 
   return (
     <div className="mt-3">
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted">Add credit</span>
-        <span className="text-[10px] text-muted-2">pay with USDC</span>
+        <span className="text-[10px] text-muted-2">{isWallet ? "pay with USDC" : "pay by card"}</span>
       </div>
       <div className="mt-1.5 flex items-center gap-1.5">
         {PRESETS.map((amount) => (
@@ -52,7 +59,9 @@ export function TopUpControl() {
         ))}
       </div>
       {inFlight && (
-        <div className="mt-2 text-xs text-muted">Signing &amp; settling on-chain…</div>
+        <div className="mt-2 text-xs text-muted">
+          {isWallet ? "Signing & settling on-chain…" : "Opening secure checkout…"}
+        </div>
       )}
       {done && !inFlight && (
         <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-300">

@@ -1,18 +1,19 @@
 /**
  * Account / welcome-credit endpoint.
  *
- * POST /api/account  { address }  — called right after a CDP embedded-wallet
- *   sign-in. Idempotently grants the one-time welcome test credit to that wallet
- *   and returns its credit status. Safe to call on every sign-in.
+ * POST /api/account  { address }  — called right after sign-in (a connected
+ *   self-custody wallet `0x…` or an `email:<id>` identity). Idempotently grants
+ *   the one-time welcome test credit to that id and returns its credit status.
+ *   Safe to call on every sign-in.
  *
- * GET /api/account?user=0x…       — current credit status for a wallet.
+ * GET /api/account?user=…          — current credit status for a wallet or email id.
  *
- * Credit gating applies only to wallet-identified (signed-in) users; anonymous
+ * Credit gating applies only to signed-in (credit-bearing) users; anonymous
  * session users keep the per-session budget and never touch this endpoint.
  */
 
 import { getConfig } from "@/lib/config";
-import { creditStatus, grantWelcomeCredit, isWalletUser } from "@/lib/credit";
+import { creditStatus, grantWelcomeCredit, isCreditUser } from "@/lib/credit";
 
 function badRequest(message: string): Response {
   return Response.json(
@@ -30,8 +31,8 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const address = body.address?.trim();
-  if (!isWalletUser(address)) {
-    return badRequest("address must be a 0x-prefixed EVM wallet address");
+  if (!isCreditUser(address)) {
+    return badRequest("address must be a 0x-prefixed EVM wallet address or an email:<id>");
   }
 
   const welcome = getConfig().welcomeCreditUsd ?? 1;
@@ -41,8 +42,8 @@ export async function POST(request: Request): Promise<Response> {
 
 export async function GET(request: Request): Promise<Response> {
   const user = new URL(request.url).searchParams.get("user")?.trim();
-  if (!isWalletUser(user)) {
-    return badRequest("user query param must be a 0x-prefixed EVM wallet address");
+  if (!isCreditUser(user)) {
+    return badRequest("user query param must be a 0x-prefixed EVM wallet address or an email:<id>");
   }
   return Response.json(await creditStatus(user!));
 }

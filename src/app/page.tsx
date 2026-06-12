@@ -1,10 +1,10 @@
 import { BeamrApp } from "@/components/BeamrApp";
-import { CdpProvider } from "@/components/cdp/CdpProvider";
+import { AccountProvider } from "@/components/AccountProvider";
 
 export default function Home() {
   return (
-    <CdpProvider>
+    <AccountProvider>
       <BeamrApp />
-    </CdpProvider>
+    </AccountProvider>
   );
 }

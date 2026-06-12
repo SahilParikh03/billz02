@@ -36,6 +36,20 @@ export function isWalletUser(userId: string | undefined | null): boolean {
   return typeof userId === "string" && /^0x[0-9a-fA-F]{40}$/.test(userId);
 }
 
+/**
+ * True when `userId` is a credit-bearing identity — either an EVM wallet
+ * address (Rail A, signs EIP-3009 to top up) or an `email:<lowercased>` id
+ * (Rail B, funds credit by card). This is the gate for *spending* and *reading*
+ * credit, which both rails share. {@link isWalletUser} stays narrower: only
+ * wallet users can sign an x402 authorization, so the topup endpoint keeps it.
+ */
+export function isCreditUser(userId: string | undefined | null): boolean {
+  return (
+    typeof userId === "string" &&
+    (/^0x[0-9a-fA-F]{40}$/.test(userId) || /^email:.+/.test(userId))
+  );
+}
+
 /** Remaining credit balance in USD, clamped at 0. */
 export async function getCreditBalance(userId: string): Promise<number> {
   const v = await getStore().get(balanceKey(userId));

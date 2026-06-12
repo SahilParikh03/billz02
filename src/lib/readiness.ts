@@ -11,16 +11,14 @@
  */
 
 import type { AppConfig } from "./types";
-import { walletProvider, cdpCredsPresent } from "@/payment/wallet";
-import { facilitatorKind, facilitatorUrl } from "@/payment/facilitator";
 import { getStore, isSharedStore } from "./store";
 
 export interface ReadinessReport {
   providerMode: "mock" | "live";
   network: string;
   mainnet: boolean;
-  wallet: { provider: "key" | "cdp"; configured: boolean };
-  facilitator: { kind: "cdp" | "public"; url: string };
+  wallet: { provider: "key"; configured: boolean };
+  facilitator: { kind: "local"; rpc: string };
   store: { id: string; shared: boolean; reachable: boolean };
   cache: { enabled: boolean; shared: boolean };
   /** True when a live mainnet request could settle right now (no hard blockers). */
@@ -31,18 +29,15 @@ export interface ReadinessReport {
 
 export async function assessReadiness(cfg: AppConfig): Promise<ReadinessReport> {
   const mainnet = cfg.network === "base";
-  const provider = walletProvider();
 
-  // Wallet configured?
-  const walletConfigured =
-    provider === "cdp" ? cdpCredsPresent() : Boolean(cfg.walletPrivateKey);
+  // The router wallet (WALLET_PRIVATE_KEY) is the only signer/settler now — it
+  // both pays upstream providers and broadcasts in-process settlement.
+  const walletConfigured = Boolean(cfg.walletPrivateKey);
 
   // Shared store reachability.
   const store = getStore();
   const shared = isSharedStore(store);
   const reachable = await store.ping();
-
-  const facKind = facilitatorKind();
 
   const blockers: string[] = [];
   const warnings: string[] = [];
@@ -52,11 +47,7 @@ export async function assessReadiness(cfg: AppConfig): Promise<ReadinessReport> 
   }
 
   if (!walletConfigured) {
-    blockers.push(
-      provider === "cdp"
-        ? "CDP wallet creds incomplete (need CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET)"
-        : "WALLET_PRIVATE_KEY is not set (key wallet provider)",
-    );
+    blockers.push("WALLET_PRIVATE_KEY is not set (router wallet signs + settles)");
   }
 
   if (shared && !reachable) {
@@ -69,14 +60,9 @@ export async function assessReadiness(cfg: AppConfig): Promise<ReadinessReport> 
       "budget state is process-local; set REDIS_URL/REDIS_TOKEN so per-session/user caps hold across instances",
     );
   }
-  if (mainnet && provider === "key") {
+  if (mainnet && !process.env.BEAMR_RPC_URL) {
     warnings.push(
-      "using a raw private-key hot wallet on mainnet; set BEAMR_WALLET_PROVIDER=cdp for MPC custody + spend caps",
-    );
-  }
-  if (mainnet && facKind === "public") {
-    warnings.push(
-      "using the public facilitator; set CDP_API_KEY_ID/SECRET for the CDP facilitator (OFAC/KYT screening + SLA)",
+      "no BEAMR_RPC_URL set; in-process settlement falls back to the public chain RPC (rate-limited) — set a dedicated mainnet RPC",
     );
   }
   if (!mainnet && cfg.providerMode === "live") {
@@ -87,8 +73,8 @@ export async function assessReadiness(cfg: AppConfig): Promise<ReadinessReport> 
     providerMode: cfg.providerMode,
     network: cfg.network,
     mainnet,
-    wallet: { provider, configured: walletConfigured },
-    facilitator: { kind: facKind, url: facilitatorUrl(cfg) },
+    wallet: { provider: "key", configured: walletConfigured },
+    facilitator: { kind: "local", rpc: process.env.BEAMR_RPC_URL || "(chain default)" },
     store: { id: store.id, shared, reachable },
     cache: { enabled: cfg.cache.enabled, shared: cfg.cache.enabled && shared },
     liveReady: blockers.length === 0,

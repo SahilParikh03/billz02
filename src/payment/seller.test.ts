@@ -1,12 +1,12 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { AppConfig } from "@/lib/types";
 import type { PaymentPayload, PaymentRequirements } from "x402/types";
 
-// Mock the facilitator so verify/settle never touch the network.
+// Mock the in-process facilitator so verify/settle never touch viem/the chain.
 const verify = vi.fn();
 const settle = vi.fn();
-vi.mock("x402/verify", () => ({
-  useFacilitator: vi.fn(() => ({ verify, settle })),
+vi.mock("./localFacilitator", () => ({
+  createLocalFacilitator: vi.fn(() => ({ verify, settle })),
 }));
 
 import {
@@ -23,7 +23,6 @@ function cfg(over: Partial<AppConfig["sell"]> = {}): AppConfig {
     sessionBudgetUsd: 5,
     maxPaymentPerCallUsd: 0.1,
     network: "base-sepolia",
-    facilitatorUrl: "https://x402.org/facilitator",
     venice: { baseUrl: "https://api.venice.ai/api/v1" },
     hyperbolic: { url: "https://hyperbolic-x402.vercel.app/v1/chat/completions" },
     routing: { difficultyThreshold: 0.5, latencyWeight: 0, qualityWeight: 0 },
@@ -63,15 +62,13 @@ const reqs = (): PaymentRequirements =>
     description: "test",
   });
 
-const FAC = { url: "https://x402.org/facilitator" } as never;
+// The "facilitator" handed to settlePayment is the in-process facilitator
+// instance (here, the mocked { verify, settle }).
+const FAC = { verify, settle } as never;
 
 beforeEach(() => {
   verify.mockReset();
   settle.mockReset();
-});
-
-afterEach(() => {
-  delete process.env.BEAMR_FALLBACK_FACILITATORS;
 });
 
 // ── buildPaymentRequirements ──────────────────────────────────────────────────
@@ -171,16 +168,7 @@ describe("verifyPayment", () => {
     expect(out.reason).toBe("insufficient_funds");
   });
 
-  it("fails over to the next facilitator when the first throws", async () => {
-    process.env.BEAMR_FALLBACK_FACILITATORS = "https://fallback.example/facilitator";
-    verify.mockRejectedValueOnce(new Error("facilitator down"));
-    verify.mockResolvedValueOnce({ isValid: true, payer: "0xpayer" });
-    const out = await verifyPayment(cfg(), payload, reqs());
-    expect(out.ok).toBe(true);
-    expect(verify).toHaveBeenCalledTimes(2);
-  });
-
-  it("reports facilitator_error when every facilitator throws", async () => {
+  it("reports facilitator_error when the facilitator throws", async () => {
     verify.mockRejectedValue(new Error("down"));
     const out = await verifyPayment(cfg(), payload, reqs());
     expect(out.ok).toBe(false);

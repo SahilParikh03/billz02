@@ -1,23 +1,36 @@
 /**
- * Browser credit top-up flow (Phase D) — the two-step x402 handshake.
+ * Browser credit top-up flow (Phase E) — the two-step x402 handshake.
  *
  * Step 1: POST /api/credit/topup with no payment → the server answers 402 with
  *         an x402 offer (`accepts[0]` = PaymentRequirements for `amount_usd`).
- * Step 2: sign that offer with the embedded wallet (via {@link cdpX402Account} +
- *         x402's own `createPaymentHeader`) and POST again with the X-PAYMENT
- *         header → the server verifies, settles on-chain, and credits the user.
+ * Step 2: sign that offer with the connected wallet (via the supplied
+ *         {@link X402Account} + x402's own `createPaymentHeader`) and POST again
+ *         with the X-PAYMENT header → the server verifies, settles in-process,
+ *         and credits the user.
  *
- * Pure and injectable (the signer and `fetch` are parameters), so it carries the
- * whole flow without React and is unit-testable end-to-end against the real
- * x402 encoder + the server's decoder.
+ * Signer-agnostic: the caller hands in a pre-built `X402Account` (wallet rail),
+ * so this carries the whole flow without knowing which wallet produced it.
+ * `fetch` is injectable for tests.
  */
 
 import { createPaymentHeader } from "x402/client";
-import { cdpX402Account, type SignEvmTypedData } from "@/payment/cdpSigner";
-import type { TopUpResult } from "./account";
+import type { X402Account } from "./x402Account";
 
 const ENDPOINT = "/api/credit/topup";
 const X402_VERSION = 1;
+
+/** Outcome of a credit top-up (the x402 pay → settle → credit round trip). */
+export interface TopUpResult {
+  ok: boolean;
+  /** USD added on success. */
+  credited?: number;
+  /** New credit balance on success. */
+  balance?: number;
+  /** Settlement tx hash, when settlement returns one. */
+  txHash?: string | null;
+  /** Human-readable failure reason when `ok` is false. */
+  error?: string;
+}
 
 /** Pull a message out of either error envelope the endpoint can return. */
 function readError(data: unknown): string | undefined {
@@ -32,14 +45,13 @@ function readError(data: unknown): string | undefined {
 }
 
 export async function runTopUp(
-  address: string,
-  signEvmTypedData: SignEvmTypedData,
+  account: X402Account,
   amountUsd: number,
   fetchImpl: typeof fetch = fetch,
 ): Promise<TopUpResult> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    "X-Beamr-User": address,
+    "X-Beamr-User": account.address,
   };
   const body = JSON.stringify({ amount_usd: amountUsd });
 
@@ -57,10 +69,9 @@ export async function runTopUp(
     return { ok: false, error: "malformed payment offer from server" };
   }
 
-  // ── Step 2: sign the offer with the embedded wallet ─────────────────────────
+  // ── Step 2: sign the offer with the connected wallet ────────────────────────
   let xPayment: string;
   try {
-    const account = cdpX402Account(address, signEvmTypedData);
     xPayment = await createPaymentHeader(account as never, X402_VERSION, requirements as never);
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "could not sign the payment" };

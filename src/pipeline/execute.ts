@@ -8,7 +8,7 @@ import type {
   StreamEvent,
 } from "@/lib/types";
 import { getBudgetStatus, canSpend, recordSpend } from "@/payment/budget";
-import { isWalletUser, getCreditBalance, chargeCredit } from "@/lib/credit";
+import { isCreditUser, getCreditBalance, chargeCredit } from "@/lib/credit";
 import { publishSpend } from "@/lib/events";
 import { getProvider, getProviders } from "@/providers/index";
 import { route } from "@/policy/select";
@@ -78,12 +78,13 @@ export async function* executeChat(
     return;
   }
 
-  // Signed-in (wallet) users pay from their prepaid credit balance. Require
-  // enough to cover the cost-plus charge before serving; a short balance is a
-  // top-up prompt (surfaced as HTTP 402 upstream), not a hard "exhausted" stop.
-  // Anonymous session users skip this and rely on the session/daily budget.
-  const walletUser = isWalletUser(userId);
-  if (walletUser && (await getCreditBalance(userId)) < estCharge) {
+  // Signed-in (credit-bearing) users — wallet or email — pay from their prepaid
+  // credit balance. Require enough to cover the cost-plus charge before serving;
+  // a short balance is a top-up prompt (surfaced as HTTP 402 upstream), not a
+  // hard "exhausted" stop. Anonymous session users skip this and rely on the
+  // session/daily budget.
+  const creditUser = isCreditUser(userId);
+  if (creditUser && (await getCreditBalance(userId)) < estCharge) {
     yield { type: "error", error: "insufficient credit — top up" };
     return;
   }
@@ -138,7 +139,7 @@ export async function* executeChat(
           // cost, not price — see the spend-feed contract). The wallet user is
           // charged cost-plus, so their prepaid balance drops by `cost × margin`.
           const status = await recordSpend(sessionId, result.usdcCharged, userId);
-          if (walletUser) {
+          if (creditUser) {
             await chargeCredit(userId, withMargin(result.usdcCharged, cfg));
           }
 
