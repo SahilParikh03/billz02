@@ -30,6 +30,9 @@
   --glass-shadow: 0 14px 50px rgba(0, 0, 0, 0.5);
   --glass-glow-1: rgba(150, 130, 255, 0.18);
   --glass-glow-2: rgba(90, 160, 255, 0.12);
+  /* Floating menus/popovers: near-opaque so they stay legible even where a
+     backdrop-filter ancestor (e.g. .glass-bar) neutralises nested blur. */
+  --menu-bg: rgba(17, 20, 27, 0.97);
 
   /* Solid (non-blur) raised chrome — bars, tabs */
   --chrome: rgba(12, 14, 19, 0.72);
@@ -58,6 +61,7 @@
   --glass-shadow: 0 12px 40px rgba(20, 28, 46, 0.12);
   --glass-glow-1: rgba(124, 58, 237, 0.08);
   --glass-glow-2: rgba(37, 99, 235, 0.07);
+  --menu-bg: rgba(255, 255, 255, 0.97);
 
   --chrome: rgba(255, 255, 255, 0.78);
   --grid-dot: rgba(40, 50, 70, 0.08);
@@ -126,6 +130,12 @@ body {
     background:
       radial-gradient(60% 180% at 38% -40%, var(--glass-glow-1), transparent 60%),
       radial-gradient(50% 160% at 72% -30%, var(--glass-glow-2), transparent 60%);
+  }
+  /* Popover/menu variant of .glass. Nested inside a .glass-bar header the
+     backdrop blur is a no-op, so a translucent bg bleeds the page through;
+     a near-opaque fill keeps the panel readable. */
+  .glass-menu {
+    background: var(--menu-bg);
   }
 
   .glass-bar {

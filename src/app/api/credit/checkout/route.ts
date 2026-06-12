@@ -85,6 +85,16 @@ export async function POST(request: Request): Promise<Response> {
 
     return Response.json({ url: session.url });
   } catch (e) {
-    return err(`could not create checkout session: ${(e as Error).message}`, "payment_error", 502);
+    const raw = (e as Error).message;
+    // Surface the real Stripe reason to the server log (not the customer).
+    console.error("[credit/checkout] Stripe session create failed:", raw);
+    // The merchant Stripe account isn't activated for live charges yet. This is
+    // an account-state issue, not something the customer can act on — show a
+    // calm, non-alarming message instead of Stripe's raw "your account…" text.
+    const notActivated = /cannot currently make live charges|account.*not.*activated/i.test(raw);
+    const message = notActivated
+      ? "Card payments are temporarily unavailable. Please try a wallet top-up, or check back shortly."
+      : "Could not start checkout. Please try again.";
+    return err(message, "payment_error", 502);
   }
 }

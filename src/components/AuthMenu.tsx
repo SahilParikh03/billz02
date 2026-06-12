@@ -56,7 +56,7 @@ export function AuthMenu() {
           )}
         </button>
         {open && (
-          <div className="glass absolute right-0 mt-2 w-64 rounded-2xl p-3 z-30 text-sm">
+          <div className="glass glass-menu absolute right-0 mt-2 w-64 rounded-2xl p-3 z-30 text-sm">
             <div className="relative">
               <div className="text-muted text-xs">
                 {account.identity.kind === "wallet" ? "Wallet connected" : "Signed in"}
@@ -96,7 +96,7 @@ export function AuthMenu() {
         Add credit
       </button>
       {open && (
-        <div className="glass absolute right-0 mt-2 w-72 rounded-2xl p-4 z-30">
+        <div className="glass glass-menu absolute right-0 mt-2 w-72 rounded-2xl p-4 z-30">
           <div className="relative">
             <div className="text-sm text-ink font-medium">Connect a wallet</div>
             <div className="text-xs text-muted mt-0.5">Pay with USDC — you keep custody.</div>
