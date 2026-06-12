@@ -18,11 +18,11 @@ interface Bus {
 
 const MAX_RECENT = 100;
 
-const g = globalThis as unknown as { __billzBus?: Bus };
+const g = globalThis as unknown as { __beamrBus?: Bus };
 
 function bus(): Bus {
-  if (!g.__billzBus) g.__billzBus = { subs: new Set(), recent: [] };
-  return g.__billzBus;
+  if (!g.__beamrBus) g.__beamrBus = { subs: new Set(), recent: [] };
+  return g.__beamrBus;
 }
 
 export function publishSpend(e: SpendEvent): void {

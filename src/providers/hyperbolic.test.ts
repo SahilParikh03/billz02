@@ -27,7 +27,6 @@ const MOCK_CFG: AppConfig = {
   sessionBudgetUsd: 5,
   maxPaymentPerCallUsd: 0.10,
   network: "base-sepolia",
-  facilitatorUrl: "https://x402.org/facilitator",
   // No real private key — getSigner() must not be reached via injected fetch
   walletPrivateKey: undefined,
   venice: { baseUrl: "https://api.venice.ai/api/v1" },

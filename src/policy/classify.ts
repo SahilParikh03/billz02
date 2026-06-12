@@ -1,5 +1,5 @@
 /**
- * BILLZ difficulty classifier — Stage 1.
+ * BEAMR difficulty classifier — Stage 1.
  *
  * Deterministic, dependency-free, in-process. Target: < 2 ms per call.
  *

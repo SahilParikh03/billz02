@@ -3,14 +3,22 @@ import { createMockAdapter } from "./mock";
 import { createVeniceAdapter } from "./venice";
 import { createHyperbolicAdapter } from "./hyperbolic";
 import { createSurplusAdapter } from "./surplus";
+import { createAnthropicAdapter } from "./anthropic";
+import { createOpenRouterAdapter } from "./openrouter";
 
 /**
  * Build the active provider set for the current config.
  * - mock mode → just the offline mock provider.
  * - live mode → Hyperbolic + Surplus (pure x402; the funded wallet pays), plus
- *   Venice ONLY when VENICE_API_KEY is set. Without a key every Venice request
- *   returns 402, so including it just adds a guaranteed-fail hop to routing and
- *   failover. Failover across the active set is handled by the policy layer.
+ *   key-gated credit-balance providers:
+ *     · Venice     when VENICE_API_KEY is set
+ *     · Anthropic  when ANTHROPIC_API_KEY is set
+ *     · OpenRouter when OPENROUTER_API_KEY is set (OpenAI-compatible; a second
+ *                  route to Claude for accounts that can't fund Anthropic direct)
+ *   Without its key, every request to a credit-balance provider would just 402 /
+ *   401, so including it would only add a guaranteed-fail hop to routing and
+ *   failover and surface dead models in the list. Failover across the active set
+ *   is handled by the policy layer.
  */
 export function getProviders(cfg: AppConfig): ProviderAdapter[] {
   if (cfg.providerMode === "mock") return [createMockAdapter(cfg)];
@@ -18,8 +26,11 @@ export function getProviders(cfg: AppConfig): ProviderAdapter[] {
     createHyperbolicAdapter(cfg),
     createSurplusAdapter(cfg),
   ];
-  // Venice is reliable only with a Bearer key; gate it in when configured.
+  // Credit-balance providers are reliable only with their API key; gate each
+  // in when configured (unshifted so they lead routing/failover order).
   if (process.env.VENICE_API_KEY) providers.unshift(createVeniceAdapter(cfg));
+  if (process.env.ANTHROPIC_API_KEY) providers.unshift(createAnthropicAdapter(cfg));
+  if (process.env.OPENROUTER_API_KEY) providers.unshift(createOpenRouterAdapter(cfg));
   return providers;
 }
 

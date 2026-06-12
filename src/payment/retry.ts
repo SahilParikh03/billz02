@@ -1,7 +1,7 @@
 /**
  * Retry helper for x402 paid fetches under concurrency.
  *
- * BILLZ uses a single shared wallet, so firing several terminals at once means
+ * BEAMR uses a single shared wallet, so firing several terminals at once means
  * several x402 settlements from the same payer hit the facilitator near-
  * simultaneously. Some get rejected with a pre-settlement verification error
  * (e.g. `invalid_exact_evm_transaction_simulation_failed`) — the payer is fine,

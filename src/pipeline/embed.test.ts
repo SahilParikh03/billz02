@@ -102,9 +102,9 @@ describe("createMiniLmEmbedder — metadata (no model download)", () => {
 });
 
 // Opt-in: downloads the ONNX model from the HF hub on first run. Enable with
-// BILLZ_TEST_MINILM=1 (and @huggingface/transformers installed). Skipped by
+// BEAMR_TEST_MINILM=1 (and @huggingface/transformers installed). Skipped by
 // default so the suite stays offline and fast.
-describe.runIf(process.env.BILLZ_TEST_MINILM === "1")(
+describe.runIf(process.env.BEAMR_TEST_MINILM === "1")(
   "MiniLM embedder — live (network)",
   () => {
     it(

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * BILLZ training-data CLI — scripts/train.mjs
+ * BEAMR training-data CLI — scripts/train.mjs
  *
- * Reads .billz/feedback.jsonl, aggregates per (taskClass, provider, model),
+ * Reads .beamr/feedback.jsonl, aggregates per (taskClass, provider, model),
  * prints a quality-per-dollar leaderboard, and writes the exportable preference
- * dataset to .billz/training-dataset.json.
+ * dataset to .beamr/training-dataset.json.
  *
  * Usage:  node scripts/train.mjs
  */
@@ -13,8 +13,8 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-const FEEDBACK_PATH = join(".billz", "feedback.jsonl");
-const OUTPUT_PATH = join(".billz", "training-dataset.json");
+const FEEDBACK_PATH = join(".beamr", "feedback.jsonl");
+const OUTPUT_PATH = join(".beamr", "training-dataset.json");
 
 // ── Load feedback log ──────────────────────────────────────────────────────────
 
@@ -125,7 +125,7 @@ const hr = "─".repeat(
   COL.rank + COL.model + COL.task + COL.provider + COL.win + COL.cost + COL.qpd + COL.samples + 7,
 );
 
-console.log(`\nBILLZ Quality Leaderboard  (${rows.length} votes from ${FEEDBACK_PATH})\n`);
+console.log(`\nBEAMR Quality Leaderboard  (${rows.length} votes from ${FEEDBACK_PATH})\n`);
 console.log(hr);
 console.log(
   pad("#", COL.rank) +
@@ -181,6 +181,6 @@ const dataset = {
   })),
 };
 
-await mkdir(".billz", { recursive: true });
+await mkdir(".beamr", { recursive: true });
 await writeFile(OUTPUT_PATH, JSON.stringify(dataset, null, 2));
 console.log(`Training dataset written to ${OUTPUT_PATH}\n`);

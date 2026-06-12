@@ -1,10 +1,10 @@
-import { BillzApp } from "@/components/BillzApp";
-import { CdpProvider } from "@/components/cdp/CdpProvider";
+import { BeamrApp } from "@/components/BeamrApp";
+import { AccountProvider } from "@/components/AccountProvider";
 
 export default function Home() {
   return (
-    <CdpProvider>
-      <BillzApp />
-    </CdpProvider>
+    <AccountProvider>
+      <BeamrApp />
+    </AccountProvider>
   );
 }

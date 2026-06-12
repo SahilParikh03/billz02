@@ -12,7 +12,6 @@ function cfg(overrides: Partial<AppConfig> = {}): AppConfig {
     sessionBudgetUsd: 5,
     maxPaymentPerCallUsd: 0.1,
     network: "base",
-    facilitatorUrl: "https://x402.org/facilitator",
     walletPrivateKey: ("0x" + "1".repeat(64)) as Hex,
     venice: { baseUrl: "https://api.venice.ai/api/v1" },
     hyperbolic: { url: "https://hyperbolic-x402.vercel.app/v1/chat/completions" },
@@ -24,20 +23,14 @@ function cfg(overrides: Partial<AppConfig> = {}): AppConfig {
 
 beforeEach(() => {
   resetStore();
-  delete process.env.BILLZ_WALLET_PROVIDER;
-  delete process.env.CDP_API_KEY_ID;
-  delete process.env.CDP_API_KEY_SECRET;
-  delete process.env.CDP_WALLET_SECRET;
   delete process.env.REDIS_URL;
   delete process.env.REDIS_TOKEN;
+  delete process.env.BEAMR_RPC_URL;
 });
 
 afterEach(() => {
   resetStore();
-  delete process.env.BILLZ_WALLET_PROVIDER;
-  delete process.env.CDP_API_KEY_ID;
-  delete process.env.CDP_API_KEY_SECRET;
-  delete process.env.CDP_WALLET_SECRET;
+  delete process.env.BEAMR_RPC_URL;
 });
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -55,40 +48,24 @@ describe("assessReadiness", () => {
     expect(r.blockers.join(" ")).toMatch(/WALLET_PRIVATE_KEY/);
   });
 
-  it("live + key wallet + key set on mainnet is live-ready (with risk warnings)", async () => {
+  it("live + router key set on mainnet is live-ready (with risk warnings)", async () => {
     const r = await assessReadiness(cfg());
     expect(r.liveReady).toBe(true);
     expect(r.blockers).toEqual([]);
     expect(r.wallet).toEqual({ provider: "key", configured: true });
-    // Mainnet + key wallet + memory store + public facilitator → three warnings.
+    expect(r.facilitator.kind).toBe("local");
+    // Mainnet + memory store + no dedicated RPC → two warnings.
     const w = r.warnings.join(" ");
     expect(w).toMatch(/process-local/); // no shared store
-    expect(w).toMatch(/MPC custody/); // raw key wallet
-    expect(w).toMatch(/public facilitator/); // no CDP facilitator
+    expect(w).toMatch(/BEAMR_RPC_URL/); // no dedicated RPC
   });
 
-  it("live + cdp provider without creds is blocked", async () => {
-    process.env.BILLZ_WALLET_PROVIDER = "cdp";
-    const r = await assessReadiness(cfg({ walletPrivateKey: undefined }));
-    expect(r.liveReady).toBe(false);
-    expect(r.blockers.join(" ")).toMatch(/CDP wallet creds incomplete/);
-    expect(r.wallet.provider).toBe("cdp");
-  });
-
-  it("live + cdp provider + full creds selects the CDP facilitator and is live-ready", async () => {
-    process.env.BILLZ_WALLET_PROVIDER = "cdp";
-    process.env.CDP_API_KEY_ID = "id";
-    process.env.CDP_API_KEY_SECRET = "secret";
-    process.env.CDP_WALLET_SECRET = "wallet-secret";
-    const r = await assessReadiness(cfg({ walletPrivateKey: undefined }));
+  it("a dedicated mainnet RPC drops the RPC warning", async () => {
+    process.env.BEAMR_RPC_URL = "https://base-mainnet.example/rpc";
+    const r = await assessReadiness(cfg());
     expect(r.liveReady).toBe(true);
-    expect(r.wallet).toEqual({ provider: "cdp", configured: true });
-    expect(r.facilitator.kind).toBe("cdp");
-    // CDP facilitator present → no public-facilitator warning; still warns on store.
-    const w = r.warnings.join(" ");
-    expect(w).not.toMatch(/public facilitator/);
-    expect(w).not.toMatch(/MPC custody/);
-    expect(w).toMatch(/process-local/);
+    expect(r.facilitator.rpc).toBe("https://base-mainnet.example/rpc");
+    expect(r.warnings.join(" ")).not.toMatch(/BEAMR_RPC_URL/);
   });
 
   it("memory store is reported reachable but not shared", async () => {
@@ -99,6 +76,6 @@ describe("assessReadiness", () => {
   it("live on testnet warns to switch the network", async () => {
     const r = await assessReadiness(cfg({ network: "base-sepolia" }));
     expect(r.mainnet).toBe(false);
-    expect(r.warnings.join(" ")).toMatch(/switch BILLZ_NETWORK=base/);
+    expect(r.warnings.join(" ")).toMatch(/switch BEAMR_NETWORK=base/);
   });
 });

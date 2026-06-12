@@ -1,6 +1,8 @@
-import { describe, it, expect, afterEach } from "vitest";
-import { getSigner, walletProvider } from "./wallet";
+import { describe, it, expect } from "vitest";
+import { getSigner, getWalletClient, getPublicClient, chainFor } from "./wallet";
 import type { AppConfig } from "@/lib/types";
+import type { Hex } from "viem";
+import { base, baseSepolia } from "viem/chains";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -8,98 +10,63 @@ const BASE_CFG: Omit<AppConfig, "providerMode" | "walletPrivateKey"> = {
   sessionBudgetUsd: 5,
   maxPaymentPerCallUsd: 0.10,
   network: "base-sepolia",
-  facilitatorUrl: "https://x402.org/facilitator",
   venice: { baseUrl: "https://api.venice.ai/api/v1" },
   hyperbolic: { url: "https://hyperbolic-x402.vercel.app/v1/chat/completions" },
   routing: { difficultyThreshold: 0.5, latencyWeight: 0, qualityWeight: 0 },
   cache: { enabled: true, simThreshold: 0.83, ttlMs: 86400000, maxEntries: 500 },
 };
 
-/**
- * Save and restore BILLZ_WALLET_PROVIDER around each test so env mutations
- * don't leak across cases.
- */
-afterEach(() => {
-  delete process.env.BILLZ_WALLET_PROVIDER;
-  delete process.env.CDP_API_KEY_ID;
-  delete process.env.CDP_API_KEY_SECRET;
-  delete process.env.CDP_WALLET_SECRET;
-});
+const KEY = ("0x" + "1".repeat(64)) as Hex;
 
-// ── walletProvider() ─────────────────────────────────────────────────────────
+// ── chainFor() ────────────────────────────────────────────────────────────────
 
-describe("walletProvider()", () => {
-  it("returns 'key' by default when env var is absent", () => {
-    delete process.env.BILLZ_WALLET_PROVIDER;
-    expect(walletProvider()).toBe("key");
-  });
-
-  it("returns 'key' when env var is empty string", () => {
-    process.env.BILLZ_WALLET_PROVIDER = "";
-    expect(walletProvider()).toBe("key");
-  });
-
-  it("returns 'cdp' when env var is 'cdp'", () => {
-    process.env.BILLZ_WALLET_PROVIDER = "cdp";
-    expect(walletProvider()).toBe("cdp");
-  });
-
-  it("returns 'key' for any unrecognised value (safe default)", () => {
-    process.env.BILLZ_WALLET_PROVIDER = "unknown-provider";
-    expect(walletProvider()).toBe("key");
+describe("chainFor()", () => {
+  it("maps 'base' to Base mainnet and everything else to Base Sepolia", () => {
+    expect(chainFor("base").id).toBe(base.id);
+    expect(chainFor("base-sepolia").id).toBe(baseSepolia.id);
+    expect(chainFor("anything-else").id).toBe(baseSepolia.id);
   });
 });
 
 // ── getSigner() — guard paths (no network calls) ─────────────────────────────
 
 describe("payment/wallet.getSigner", () => {
-  it("throws in mock mode regardless of provider", async () => {
-    delete process.env.BILLZ_WALLET_PROVIDER; // default "key"
-    const cfg: AppConfig = {
-      ...BASE_CFG,
-      providerMode: "mock",
-      walletPrivateKey: undefined,
-    };
+  it("throws in mock mode", async () => {
+    const cfg: AppConfig = { ...BASE_CFG, providerMode: "mock", walletPrivateKey: undefined };
     await expect(getSigner(cfg)).rejects.toThrow(/mock mode/);
   });
 
-  it("throws when walletPrivateKey is absent in live mode (key provider)", async () => {
-    delete process.env.BILLZ_WALLET_PROVIDER; // default "key"
-    const cfg: AppConfig = {
-      ...BASE_CFG,
-      providerMode: "live",
-      walletPrivateKey: undefined,
-    };
+  it("throws when walletPrivateKey is absent in live mode", async () => {
+    const cfg: AppConfig = { ...BASE_CFG, providerMode: "live", walletPrivateKey: undefined };
     await expect(getSigner(cfg)).rejects.toThrow(/WALLET_PRIVATE_KEY/);
   });
 
-  it("throws a helpful CDP setup message when provider=cdp and creds are absent", async () => {
-    process.env.BILLZ_WALLET_PROVIDER = "cdp";
-    // Ensure no CDP creds leak in from the ambient environment.
-    delete process.env.CDP_API_KEY_ID;
-    delete process.env.CDP_API_KEY_SECRET;
-    delete process.env.CDP_WALLET_SECRET;
-    const cfg: AppConfig = {
-      ...BASE_CFG,
-      providerMode: "live",
-      walletPrivateKey: undefined,
-    };
-    await expect(getSigner(cfg)).rejects.toThrow(/CDP Server Wallet credentials/);
+  // NOTE: the "key" happy path is not tested here — createSigner contacts an RPC.
+});
+
+// ── getWalletClient() / getPublicClient() — guards ───────────────────────────
+
+describe("payment/wallet client builders", () => {
+  it("getWalletClient throws in mock mode", () => {
+    const cfg: AppConfig = { ...BASE_CFG, providerMode: "mock", walletPrivateKey: KEY };
+    expect(() => getWalletClient(cfg)).toThrow(/mock mode/);
   });
 
-  it("CDP error message mentions all three required secrets", async () => {
-    process.env.BILLZ_WALLET_PROVIDER = "cdp";
-    delete process.env.CDP_API_KEY_ID;
-    const cfg: AppConfig = {
-      ...BASE_CFG,
-      providerMode: "live",
-      walletPrivateKey: undefined,
-    };
-    await expect(getSigner(cfg)).rejects.toThrow(/CDP_API_KEY_ID/);
-    await expect(getSigner(cfg)).rejects.toThrow(/CDP_WALLET_SECRET/);
+  it("getWalletClient throws when the router key is unset", () => {
+    const cfg: AppConfig = { ...BASE_CFG, providerMode: "live", walletPrivateKey: undefined };
+    expect(() => getWalletClient(cfg)).toThrow(/WALLET_PRIVATE_KEY/);
   });
 
-  // NOTE: We cannot test the "key" happy-path here without making a live network
-  // call. createSigner from x402-fetch derives an EVM account and contacts an RPC.
-  // Live signer creation is verified manually with a real private key + testnet/mainnet.
+  it("getWalletClient builds a client bound to the configured chain", () => {
+    const cfg: AppConfig = { ...BASE_CFG, providerMode: "live", walletPrivateKey: KEY };
+    const client = getWalletClient(cfg);
+    expect(client.chain?.id).toBe(baseSepolia.id);
+    expect(client.account?.address).toMatch(/^0x[0-9a-fA-F]{40}$/);
+  });
+
+  it("getPublicClient builds a read-only client without a key", () => {
+    const cfg: AppConfig = { ...BASE_CFG, providerMode: "live", walletPrivateKey: undefined };
+    const client = getPublicClient(cfg);
+    expect(client.chain?.id).toBe(baseSepolia.id);
+  });
 });

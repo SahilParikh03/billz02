@@ -4,8 +4,11 @@ import type { PolicyMode } from "@/lib/types";
  * Forkable routing policies.
  *
  * Each preset tunes the cascade threshold and the cost/quality trade-off. A mode
- * is resolved per request: an `X-Billz-Policy` header override → `BILLZ_POLICY_MODE`
- * env → "balanced". This is the dossier's "fork the router policy" lever.
+ * is resolved per request: an `X-Beamr-Policy` header override → `BEAMR_POLICY_MODE`
+ * env → "frugal". This is the dossier's "fork the router policy" lever.
+ *
+ * The default is `frugal` (Phase A): bias the cheap tier so BEAMR's own spend is
+ * minimized unless a caller opts up via the header or `BEAMR_POLICY_MODE`.
  */
 export interface PolicyParams {
   /** difficulty ≥ this → strong tier. Higher = cheaper (more to the weak tier). */
@@ -38,11 +41,11 @@ function isMode(v: string | undefined | null): v is PolicyMode {
   return v != null && ALL.has(v as PolicyMode);
 }
 
-/** Effective mode: per-request override → env → "balanced". */
+/** Effective mode: per-request override → env → "frugal". */
 export function resolvePolicyMode(override?: string | null): PolicyMode {
   if (isMode(override)) return override;
-  const env = process.env.BILLZ_POLICY_MODE;
-  return isMode(env) ? env : "balanced";
+  const env = process.env.BEAMR_POLICY_MODE;
+  return isMode(env) ? env : "frugal";
 }
 
 export function policyParams(mode: PolicyMode): PolicyParams {

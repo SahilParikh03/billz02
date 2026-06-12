@@ -1,16 +1,16 @@
 import type { SpendEvent } from "@/lib/types";
 
-const LOG_FILE = "./.billz/spend.jsonl";
+const LOG_FILE = "./.beamr/spend.jsonl";
 
 /**
  * Structured per-call logger.
  *
  * - Emits a single JSON line to stdout for log aggregators.
- * - Best-effort appends to `./.billz/spend.jsonl` for offline replay / retraining.
+ * - Best-effort appends to `./.beamr/spend.jsonl` for offline replay / retraining.
  *   Errors are silently swallowed — serverless FS may be read-only.
  */
 export function logSpend(e: SpendEvent): void {
-  // Structured console log — all observability fields from billz_prd.md §6.
+  // Structured console log — all observability fields from beamr_prd.md §6.
   const line = JSON.stringify({
     level: "info",
     event: "spend",

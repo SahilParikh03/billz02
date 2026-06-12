@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 
-const STORAGE_KEY = "billz_session";
+const STORAGE_KEY = "beamr_session";
 let cached: string | null = null;
 
 /** Read or lazily create the persisted session id (client only). */

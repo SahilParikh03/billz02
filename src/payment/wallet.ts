@@ -1,62 +1,80 @@
 import type { Signer } from "x402/types";
 import { createSigner } from "x402-fetch";
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  type Chain,
+  type Hex,
+} from "viem";
+import { base, baseSepolia } from "viem/chains";
+import { privateKeyToAccount } from "viem/accounts";
 import type { AppConfig } from "@/lib/types";
 
-/** Default name for the CDP server account BILLZ creates/reuses across cold starts. */
-const CDP_WALLET_NAME = process.env.CDP_WALLET_NAME || "billz-router";
-
-// ── Provider selection ──────────────────────────────────────────────────────
-
 /**
- * Reads BILLZ_WALLET_PROVIDER from the environment and returns the normalised
- * provider name. Defaults to "key" when the variable is absent or empty.
+ * Router wallet + viem clients.
  *
- * Values:
- *  "key"  – raw private-key signer via x402-fetch's createSigner (default)
- *  "cdp"  – Coinbase Developer Platform Server Wallets (MPC + spend caps)
- *           STUB: requires @coinbase/cdp-sdk which is not yet installed.
+ * BEAMR uses one funded "router" wallet (WALLET_PRIVATE_KEY) for two jobs:
+ *  1. As the *buyer* — `getSigner` builds the x402-fetch signer that signs the
+ *     EIP-3009 authorizations BEAMR sends when it pays upstream providers
+ *     (Hyperbolic / Surplus).
+ *  2. As the *settler* — `getWalletClient` builds a viem WalletClient that
+ *     broadcasts `transferWithAuthorization` for the in-process facilitator
+ *     (`payment/localFacilitator.ts`), so the buyer never pays gas.
+ *
+ * There is no Coinbase service here any more: the CDP server-wallet provider was
+ * removed in Phase E (de-Coinbase). The only provider is the raw private key.
  */
-export function walletProvider(): "key" | "cdp" {
-  const raw = process.env.BILLZ_WALLET_PROVIDER ?? "";
-  if (raw === "cdp") return "cdp";
-  return "key";
-}
 
-// ── Module-level signer caches ───────────────────────────────────────────────
+// ── Module-level caches ──────────────────────────────────────────────────────
 
 /**
- * Signer cache keyed by private-key string.
- *
- * A signer creation performs an EVM account derivation and connects to an RPC.
- * Caching means one derivation per unique private key per process lifetime,
- * rather than one per request.
+ * Signer cache keyed by private-key string. createSigner derives an EVM account
+ * and connects to an RPC; cache it so that happens once per key per process.
  */
 const signerCache = new Map<string, Signer>();
 
-/**
- * CDP signer cache keyed by account name. A CDP `getOrCreateAccount` is a
- * network round-trip to the CDP API; cache it so each warm instance derives the
- * MPC account once, not per request.
- */
-const cdpSignerCache = new Map<string, Signer>();
+// Inner builders — their inferred return types are the *specific* viem client
+// types (with chain/account bound), so `.writeContract` doesn't demand account/
+// chain args and `.account.address` is known. Caches reuse those exact types.
+function buildPublicClient(cfg: AppConfig) {
+  return createPublicClient({ chain: chainFor(cfg.network), transport: http(rpcUrl()) });
+}
+function buildWalletClient(cfg: AppConfig & { walletPrivateKey: Hex }) {
+  return createWalletClient({
+    account: privateKeyToAccount(cfg.walletPrivateKey),
+    chain: chainFor(cfg.network),
+    transport: http(rpcUrl()),
+  });
+}
 
-// ── getSigner ────────────────────────────────────────────────────────────────
+type RouterPublicClient = ReturnType<typeof buildPublicClient>;
+type RouterWalletClient = ReturnType<typeof buildWalletClient>;
+
+/** viem client caches, keyed by the inputs that change identity (network/rpc/key). */
+const publicClientCache = new Map<string, RouterPublicClient>();
+const walletClientCache = new Map<string, RouterWalletClient>();
+
+// ── Chain / RPC selection ────────────────────────────────────────────────────
+
+/** Map the BEAMR_NETWORK string to a viem chain. */
+export function chainFor(network: string): Chain {
+  return network === "base" ? base : baseSepolia;
+}
+
+/** The configured RPC URL, or undefined to use the viem chain's default. */
+function rpcUrl(): string | undefined {
+  return process.env.BEAMR_RPC_URL || undefined;
+}
+
+// ── getSigner (buyer side) ────────────────────────────────────────────────────
 
 /**
- * Returns the x402 Signer for the given config, dispatching on
- * BILLZ_WALLET_PROVIDER (default "key").
+ * Returns the x402 Signer for the router wallet — used when BEAMR is the *buyer*
+ * (paying upstream x402 providers). Backed by x402-fetch's createSigner with a
+ * module-level cache. Works for both "base-sepolia" and "base".
  *
- * Guards:
- * - Must never be called in mock mode (the mock adapter does no settlement).
- * - Each provider path validates its own prerequisites before doing any work.
- *
- * Supported networks for the "key" provider: any network string accepted by
- * x402-fetch's createSigner, including "base-sepolia" and "base" (mainnet).
- * No mapping is required — createSigner(network: string, privateKey) takes the
- * network literal directly.
- *
- * @throws Error if called in mock mode or when the active provider lacks its
- *         required prerequisites (private key / CDP credentials).
+ * @throws Error if called in mock mode or when WALLET_PRIVATE_KEY is unset.
  */
 export async function getSigner(cfg: AppConfig): Promise<Signer> {
   if (cfg.providerMode === "mock") {
@@ -64,27 +82,9 @@ export async function getSigner(cfg: AppConfig): Promise<Signer> {
       "payment/wallet.getSigner: called in mock mode — no wallet needed for mock providers",
     );
   }
-
-  const provider = walletProvider();
-
-  if (provider === "cdp") {
-    return getSignerCdp();
-  }
-
-  // Default: "key" provider
-  return getSignerKey(cfg);
-}
-
-// ── "key" provider ───────────────────────────────────────────────────────────
-
-/**
- * Private-key provider: wraps x402-fetch's createSigner with a module-level
- * cache. Works for both "base-sepolia" (testnet) and "base" (mainnet).
- */
-async function getSignerKey(cfg: AppConfig): Promise<Signer> {
   if (!cfg.walletPrivateKey) {
     throw new Error(
-      "payment/wallet.getSigner [provider=key]: WALLET_PRIVATE_KEY is not set. " +
+      "payment/wallet.getSigner: WALLET_PRIVATE_KEY is not set. " +
         "Generate a wallet and add the 0x-prefixed private key to .env.local.",
     );
   }
@@ -98,80 +98,46 @@ async function getSignerKey(cfg: AppConfig): Promise<Signer> {
   return signer;
 }
 
-// ── "cdp" provider ───────────────────────────────────────────────────────────
+// ── viem clients (settler side) ───────────────────────────────────────────────
 
-/** True when all three CDP secrets are present in the environment. */
-export function cdpCredsPresent(): boolean {
-  return Boolean(
-    process.env.CDP_API_KEY_ID &&
-      process.env.CDP_API_KEY_SECRET &&
-      process.env.CDP_WALLET_SECRET,
-  );
+/**
+ * A read-only viem PublicClient for the configured network. Used by the
+ * in-process facilitator for `verifyTypedData`, `balanceOf`, `authorizationState`,
+ * and `waitForTransactionReceipt`. Needs no private key.
+ */
+export function getPublicClient(cfg: AppConfig): RouterPublicClient {
+  const key = `${cfg.network}:${rpcUrl() ?? ""}`;
+  const cached = publicClientCache.get(key);
+  if (cached) return cached;
+  const client = buildPublicClient(cfg);
+  publicClientCache.set(key, client);
+  return client;
 }
 
 /**
- * CDP Server Wallet provider.
+ * A viem WalletClient bound to the router account (WALLET_PRIVATE_KEY). Used by
+ * the in-process facilitator to broadcast `transferWithAuthorization` — the
+ * router pays gas, the buyer pays none.
  *
- * Coinbase Developer Platform Server Wallets hold keys via MPC (no plaintext
- * private key at rest), which is the recommended posture for a mainnet hot
- * wallet running in stateless serverless functions. The returned
- * `EvmServerAccount` exposes `address` / `signMessage` / `signTypedData`, which
- * is exactly the surface x402's `EvmSigner` (= `SignerWallet | LocalAccount`)
- * uses to sign the EIP-3009 `transferWithAuthorization` for the `exact` scheme.
- *
- * Credentials (from portal.cdp.coinbase.com → API keys / wallet secret):
- *   CDP_API_KEY_ID, CDP_API_KEY_SECRET  – authenticate the whole CDP API.
- *   CDP_WALLET_SECRET                   – authorizes signing/transaction calls.
- *   CDP_WALLET_NAME (optional)          – reused across cold starts so the same
- *                                         funded account is loaded every time.
- *
- * The CdpClient reads the three secrets straight from the environment; we never
- * hold them in AppConfig. `getOrCreateAccount` is idempotent on the name, so a
- * fresh deploy reuses the existing funded account rather than stranding funds.
- *
- * @throws Error if the CDP credentials are not fully configured.
+ * @throws Error if called in mock mode or when WALLET_PRIVATE_KEY is unset.
  */
-async function getSignerCdp(): Promise<Signer> {
-  if (!cdpCredsPresent()) {
+export function getWalletClient(cfg: AppConfig): RouterWalletClient {
+  if (cfg.providerMode === "mock") {
     throw new Error(
-      "payment/wallet.getSigner [provider=cdp]: CDP Server Wallet credentials " +
-        "are not fully configured. Set all three in .env.local:\n" +
-        "  CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET\n" +
-        "Create them at portal.cdp.coinbase.com (API key + wallet secret). " +
-        "Optionally set CDP_WALLET_NAME to reuse a named account across deploys.",
+      "payment/wallet.getWalletClient: called in mock mode — no settlement happens for mock providers",
     );
   }
-
-  const name = CDP_WALLET_NAME;
-  const cached = cdpSignerCache.get(name);
+  if (!cfg.walletPrivateKey) {
+    throw new Error(
+      "payment/wallet.getWalletClient: WALLET_PRIVATE_KEY is not set. " +
+        "Set the 0x-prefixed router private key in .env.local to settle in-process.",
+    );
+  }
+  const pk = cfg.walletPrivateKey;
+  const key = `${cfg.network}:${pk}:${rpcUrl() ?? ""}`;
+  const cached = walletClientCache.get(key);
   if (cached) return cached;
-
-  // Lazy import: only pull in the CDP SDK on the CDP path so the default "key"
-  // path (and tests) never load it.
-  const { CdpClient } = await import("@coinbase/cdp-sdk");
-  // CdpClient reads CDP_API_KEY_ID / CDP_API_KEY_SECRET / CDP_WALLET_SECRET from env.
-  const cdp = new CdpClient();
-  const account = await cdp.evm.getOrCreateAccount({ name });
-
-  // The EvmServerAccount satisfies x402's EvmSigner surface (a viem-style
-  // account with signTypedData/signMessage/address). The structural types
-  // differ only in viem's `type: "local"` discriminant, so cast through unknown.
-  const signer = account as unknown as Signer;
-  cdpSignerCache.set(name, signer);
-  return signer;
+  const client = buildWalletClient({ ...cfg, walletPrivateKey: pk });
+  walletClientCache.set(key, client);
+  return client;
 }
-
-/** Clear the CDP signer cache — for tests. */
-export function resetCdpSignerCache(): void {
-  cdpSignerCache.clear();
-}
-
-// ── getX402Config — NOT provided ─────────────────────────────────────────────
-//
-// x402's X402Config type (from "x402/types") only contains:
-//   { svmConfig?: { rpcUrl?: string } }
-//
-// There is no EVM RPC URL field — EVM RPC selection is baked into createSigner
-// via viem's chain config, not via X402Config. Providing a getX402Config helper
-// that forwards BILLZ_RPC_URL would therefore be a no-op for EVM networks.
-// Wiring it in for SVM is out of scope here; skip to avoid misleading callers.

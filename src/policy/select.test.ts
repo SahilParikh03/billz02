@@ -9,7 +9,6 @@ function mockCfg(overrides?: Partial<AppConfig>): AppConfig {
     sessionBudgetUsd: 5,
     maxPaymentPerCallUsd: 0.1,
     network: "base-sepolia",
-    facilitatorUrl: "https://x402.org/facilitator",
     venice: { baseUrl: "https://api.venice.ai/api/v1" },
     hyperbolic: { url: "https://hyperbolic-x402.vercel.app/v1/chat/completions" },
     routing: { difficultyThreshold: 0.5, latencyWeight: 0, qualityWeight: 0 },

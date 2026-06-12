@@ -5,7 +5,7 @@ import type { ProviderId } from "@/lib/types";
 
 /**
  * One open terminal pane. A pane is pinned to exactly one model/provider — the
- * core BILLZ interaction is the user choosing which LLM each terminal talks to
+ * core BEAMR interaction is the user choosing which LLM each terminal talks to
  * (manual panes, not invisible routing). Geometry is free-floating: panes are
  * absolutely positioned on the canvas and the user drags/resizes them.
  */
@@ -30,7 +30,7 @@ export interface NewPaneSpec {
   provider: ProviderId | "auto";
 }
 
-const STORAGE_KEY = "billz_workspace_v1";
+const STORAGE_KEY = "beamr_workspace_v1";
 const MIN_W = 280;
 const MIN_H = 200;
 

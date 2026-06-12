@@ -36,6 +36,20 @@ export function isWalletUser(userId: string | undefined | null): boolean {
   return typeof userId === "string" && /^0x[0-9a-fA-F]{40}$/.test(userId);
 }
 
+/**
+ * True when `userId` is a credit-bearing identity — either an EVM wallet
+ * address (Rail A, signs EIP-3009 to top up) or an `email:<lowercased>` id
+ * (Rail B, funds credit by card). This is the gate for *spending* and *reading*
+ * credit, which both rails share. {@link isWalletUser} stays narrower: only
+ * wallet users can sign an x402 authorization, so the topup endpoint keeps it.
+ */
+export function isCreditUser(userId: string | undefined | null): boolean {
+  return (
+    typeof userId === "string" &&
+    (/^0x[0-9a-fA-F]{40}$/.test(userId) || /^email:.+/.test(userId))
+  );
+}
+
 /** Remaining credit balance in USD, clamped at 0. */
 export async function getCreditBalance(userId: string): Promise<number> {
   const v = await getStore().get(balanceKey(userId));
@@ -86,6 +100,22 @@ export async function chargeCredit(
     return 0;
   }
   return next;
+}
+
+/**
+ * Add `amountUsd` to the user's credit balance — the positive counterpart to
+ * {@link chargeCredit}, sharing the same balance key. This is how a settled
+ * prepaid top-up (USDC paid to the treasury) becomes spendable credit; it is
+ * independent of the one-time welcome grant, so it works for a user who was
+ * never granted. Returns the new balance. A no-op for non-positive amounts.
+ */
+export async function addCredit(
+  userId: string,
+  amountUsd: number,
+): Promise<number> {
+  const amt = Math.max(0, amountUsd);
+  if (amt === 0) return getCreditBalance(userId);
+  return getStore().incrByFloat(balanceKey(userId), amt);
 }
 
 /** Full credit status for a user. */

@@ -1,5 +1,5 @@
 /**
- * BILLZ shared contract.
+ * BEAMR shared contract.
  *
  * Everything that crosses a module boundary lives here so the provider adapters,
  * the routing policy, the payment layer, the streaming pipeline, and the UI all
@@ -11,12 +11,18 @@ import type { Hex } from "viem";
 
 // ── Providers ───────────────────────────────────────────────────────────────
 
-export type ProviderId = "venice" | "hyperbolic" | "surplus" | "mock";
+export type ProviderId =
+  | "venice"
+  | "hyperbolic"
+  | "surplus"
+  | "anthropic"
+  | "openrouter"
+  | "mock";
 
 /**
  * How a given call was paid for.
  * - `x402-percall`   real per-call USDC settlement on-chain (Hyperbolic).
- * - `credit-balance` burned from a pre-funded provider balance (Venice).
+ * - `credit-balance` burned from a pre-funded provider balance (Venice, Anthropic, OpenRouter).
  * - `mock`           simulated; no wallet or network involved.
  */
 export type PaymentMode = "x402-percall" | "credit-balance" | "mock";
@@ -53,7 +59,7 @@ export interface ChatMessage {
   name?: string;
 }
 
-/** Subset of the OpenAI chat-completions request BILLZ accepts in Stage 0. */
+/** Subset of the OpenAI chat-completions request BEAMR accepts in Stage 0. */
 export interface ChatCompletionRequest {
   /** Model id, or "auto"/absent to let the router choose. */
   model?: string;
@@ -61,7 +67,7 @@ export interface ChatCompletionRequest {
   stream?: boolean;
   temperature?: number;
   max_tokens?: number;
-  /** Optional session id for budget tracking; also accepted via the X-Billz-Session header. */
+  /** Optional session id for budget tracking; also accepted via the X-Beamr-Session header. */
   session_id?: string;
 }
 
@@ -279,10 +285,24 @@ export interface AppConfig {
   welcomeCreditUsd?: number;
   maxPaymentPerCallUsd: number;
   network: string; // "base-sepolia" | "base"
-  facilitatorUrl: string;
   walletPrivateKey?: Hex;
   venice: { baseUrl: string };
   hyperbolic: { url: string };
+  /**
+   * Anthropic (Claude) provider. Optional on the type so existing config
+   * fixtures need not specify it; `getConfig()` always populates it. The API
+   * key is read from `ANTHROPIC_API_KEY` in the adapter (mirrors Venice), so
+   * only the optional base-URL override lives here.
+   */
+  anthropic?: { baseUrl?: string };
+  /**
+   * OpenRouter provider (OpenAI-compatible aggregator; a second route to Claude).
+   * Optional on the type so existing config fixtures need not specify it;
+   * `getConfig()` always populates it. The API key is read from
+   * `OPENROUTER_API_KEY` in the adapter (mirrors Venice), so only the optional
+   * base-URL override lives here.
+   */
+  openrouter?: { baseUrl?: string };
   routing: {
     /** difficulty ≥ this → strong tier, else weak tier. */
     difficultyThreshold: number;
@@ -299,5 +319,36 @@ export interface AppConfig {
     maxEntries: number;
     /** Embedding backend for the semantic layer; defaults to "local". */
     embedder?: EmbedderKind;
+  };
+  /**
+   * Seller-side x402 paywall (Phase 1): when enabled, BEAMR charges callers
+   * per non-streaming completion in USDC over x402. Disabled by default, so
+   * the public endpoint stays free until `BEAMR_SELL_ENABLED` is set.
+   *
+   * Optional on the type so existing config fixtures need not specify it;
+   * `getConfig()` always populates it. Resolve via `resolveSell(cfg)`.
+   */
+  sell?: {
+    enabled: boolean;
+    /** Recipient address for settled payments (the BEAMR treasury / router). */
+    payTo?: string;
+    /** Flat price (USD) for a weak-tier completion. */
+    priceWeakUsd: number;
+    /** Flat price (USD) for a strong-tier completion. */
+    priceStrongUsd: number;
+    /** How long (s) a buyer's signed authorization stays valid for settlement. */
+    maxTimeoutSeconds: number;
+  };
+  /**
+   * Cost-plus pricing (Phase A). Both paid lanes charge realized/estimated
+   * provider cost × {@link marginMultiplier} so every paid call recovers cost
+   * plus a margin, rather than a flat per-tier price.
+   *
+   * Optional on the type so existing config fixtures need not specify it;
+   * `getConfig()` always populates it. Resolve via `resolvePricing(cfg)`.
+   */
+  pricing?: {
+    /** Charge `costUsd × this`. Default 1.3 (a 30% margin over cost). */
+    marginMultiplier: number;
   };
 }

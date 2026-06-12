@@ -13,8 +13,8 @@
 # testing
 /coverage
 
-# billz runtime artifacts (spend replay log)
-.billz/
+# beamr runtime artifacts (spend replay log)
+.beamr/
 
 # next.js
 /.next/

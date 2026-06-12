@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   isWalletUser,
+  isCreditUser,
   grantWelcomeCredit,
   getCreditBalance,
   hasCredit,
   chargeCredit,
+  addCredit,
   creditStatus,
 } from "./credit";
 import { resetStore } from "./store";
@@ -28,6 +30,24 @@ describe("isWalletUser", () => {
     expect(isWalletUser("")).toBe(false);
     expect(isWalletUser(undefined)).toBe(false);
     expect(isWalletUser(null)).toBe(false);
+  });
+});
+
+describe("isCreditUser", () => {
+  it("accepts wallet addresses and email: ids", () => {
+    expect(isCreditUser(WALLET)).toBe(true);
+    expect(isCreditUser("email:alice@example.com")).toBe(true);
+    expect(isCreditUser("email:x")).toBe(true);
+  });
+
+  it("rejects session ids, bare emails, empties, and malformed ids", () => {
+    expect(isCreditUser("sess_abc123")).toBe(false);
+    expect(isCreditUser("alice@example.com")).toBe(false); // missing email: prefix
+    expect(isCreditUser("email:")).toBe(false); // empty after prefix
+    expect(isCreditUser("0x123")).toBe(false); // too short
+    expect(isCreditUser("")).toBe(false);
+    expect(isCreditUser(undefined)).toBe(false);
+    expect(isCreditUser(null)).toBe(false);
   });
 });
 
@@ -65,6 +85,26 @@ describe("credit ledger", () => {
     await grantWelcomeCredit(WALLET, 1);
     expect(await chargeCredit(WALLET, 0)).toBe(1);
     expect(await chargeCredit(WALLET, -1)).toBe(1);
+  });
+
+  it("addCredit tops up a never-granted user (no welcome grant required)", async () => {
+    expect(await getCreditBalance(WALLET)).toBe(0);
+    expect(await addCredit(WALLET, 5)).toBeCloseTo(5, 5);
+    expect(await hasCredit(WALLET)).toBe(true);
+    // Top-up alone does not flip the welcome-grant marker.
+    expect((await creditStatus(WALLET)).granted).toBe(false);
+  });
+
+  it("addCredit stacks on the existing balance and round-trips with chargeCredit", async () => {
+    await grantWelcomeCredit(WALLET, 1);
+    expect(await addCredit(WALLET, 2.5)).toBeCloseTo(3.5, 5);
+    expect(await chargeCredit(WALLET, 0.5)).toBeCloseTo(3.0, 5);
+  });
+
+  it("addCredit is a no-op for non-positive amounts", async () => {
+    await grantWelcomeCredit(WALLET, 1);
+    expect(await addCredit(WALLET, 0)).toBe(1);
+    expect(await addCredit(WALLET, -3)).toBe(1);
   });
 
   it("creditStatus reflects grant + remaining balance", async () => {
