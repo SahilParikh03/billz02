@@ -8,16 +8,16 @@ import type {
   StreamEvent,
 } from "@/lib/types";
 import { getBudgetStatus, canSpend, recordSpend } from "@/payment/budget";
-import { isWalletUser, hasCredit, chargeCredit } from "@/lib/credit";
+import { isWalletUser, getCreditBalance, chargeCredit } from "@/lib/credit";
 import { publishSpend } from "@/lib/events";
 import { getProvider, getProviders } from "@/providers/index";
 import { route } from "@/policy/select";
+import { estimateCostUsd } from "@/policy/score";
+import { withMargin } from "@/payment/margin";
 import { captureContext } from "@/lib/feedback";
 import { recordCost } from "@/lib/quality";
 import { getCache } from "./cache";
 import { logSpend, logProviderError } from "./log";
-
-const UPFRONT_ESTIMATE_USD = 0.0001;
 
 interface ExecOpts {
   sessionId: string;
@@ -64,17 +64,27 @@ export async function* executeChat(
   const decision = route(cfg, req, { policyMode });
 
   // ── 2. Budget pre-check ───────────────────────────────────────────────────────
+  // Estimate this call up front so the pre-checks gate on a realistic amount,
+  // not a token placeholder. Two different dimensions, two different numbers:
+  //   • session budget = BEAMR's own spend exposure → gate on raw cost.
+  //   • prepaid credit = the cost-plus price the user actually pays → gate on
+  //     `cost × margin` (the same amount charged on success below).
+  const estCostUsd = estimateCostUsd(req.messages, cfg);
+  const estCharge = withMargin(estCostUsd, cfg);
+
   const initialStatus = await getBudgetStatus(sessionId);
-  if (initialStatus.exceeded || !(await canSpend(sessionId, UPFRONT_ESTIMATE_USD, userId))) {
+  if (initialStatus.exceeded || !(await canSpend(sessionId, estCostUsd, userId))) {
     yield { type: "error", error: "session budget exceeded" };
     return;
   }
 
-  // Signed-in (wallet) users additionally spend from their welcome credit.
+  // Signed-in (wallet) users pay from their prepaid credit balance. Require
+  // enough to cover the cost-plus charge before serving; a short balance is a
+  // top-up prompt (surfaced as HTTP 402 upstream), not a hard "exhausted" stop.
   // Anonymous session users skip this and rely on the session/daily budget.
   const walletUser = isWalletUser(userId);
-  if (walletUser && !(await hasCredit(userId))) {
-    yield { type: "error", error: "credit exhausted" };
+  if (walletUser && (await getCreditBalance(userId)) < estCharge) {
+    yield { type: "error", error: "insufficient credit — top up" };
     return;
   }
 
@@ -124,10 +134,13 @@ export async function* executeChat(
           const latencyMs = Date.now() - start;
           const result = event.result;
 
+          // The session budget + spend feed track BEAMR's cost (usdcCharged is
+          // cost, not price — see the spend-feed contract). The wallet user is
+          // charged cost-plus, so their prepaid balance drops by `cost × margin`.
           const status = await recordSpend(sessionId, result.usdcCharged, userId);
-
-          // Deplete the signed-in user's welcome credit by the same amount.
-          if (walletUser) await chargeCredit(userId, result.usdcCharged);
+          if (walletUser) {
+            await chargeCredit(userId, withMargin(result.usdcCharged, cfg));
+          }
 
           const spendEvent: SpendEvent = {
             ts: Date.now(),
