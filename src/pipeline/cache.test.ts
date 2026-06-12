@@ -27,7 +27,6 @@ function makeCfg(
     sessionBudgetUsd: 1,
     maxPaymentPerCallUsd: 0.1,
     network: "base-sepolia",
-    facilitatorUrl: "http://localhost",
     venice: { baseUrl: "http://localhost" },
     hyperbolic: { url: "http://localhost" },
     routing: { difficultyThreshold: 0.5, latencyWeight: 0, qualityWeight: 0 },

@@ -1,6 +1,4 @@
 import { getConfig } from "@/lib/config";
-import { facilitatorKind, facilitatorUrl } from "@/payment/facilitator";
-import { walletProvider } from "@/payment/wallet";
 import { getStore, isSharedStore } from "@/lib/store";
 
 export async function GET() {
@@ -11,8 +9,8 @@ export async function GET() {
     providerMode: cfg.providerMode,
     network: cfg.network,
     sessionBudgetUsd: cfg.sessionBudgetUsd,
-    walletProvider: walletProvider(),
-    facilitator: { kind: facilitatorKind(), url: facilitatorUrl(cfg) },
+    walletProvider: "key",
+    facilitator: { kind: "local", rpc: process.env.BEAMR_RPC_URL || "(chain default)" },
     store: { id: store.id, shared: isSharedStore(store) },
   });
 }

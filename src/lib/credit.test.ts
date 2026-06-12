@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   isWalletUser,
+  isCreditUser,
   grantWelcomeCredit,
   getCreditBalance,
   hasCredit,
@@ -29,6 +30,24 @@ describe("isWalletUser", () => {
     expect(isWalletUser("")).toBe(false);
     expect(isWalletUser(undefined)).toBe(false);
     expect(isWalletUser(null)).toBe(false);
+  });
+});
+
+describe("isCreditUser", () => {
+  it("accepts wallet addresses and email: ids", () => {
+    expect(isCreditUser(WALLET)).toBe(true);
+    expect(isCreditUser("email:alice@example.com")).toBe(true);
+    expect(isCreditUser("email:x")).toBe(true);
+  });
+
+  it("rejects session ids, bare emails, empties, and malformed ids", () => {
+    expect(isCreditUser("sess_abc123")).toBe(false);
+    expect(isCreditUser("alice@example.com")).toBe(false); // missing email: prefix
+    expect(isCreditUser("email:")).toBe(false); // empty after prefix
+    expect(isCreditUser("0x123")).toBe(false); // too short
+    expect(isCreditUser("")).toBe(false);
+    expect(isCreditUser(undefined)).toBe(false);
+    expect(isCreditUser(null)).toBe(false);
   });
 });
 

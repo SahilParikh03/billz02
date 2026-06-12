@@ -61,8 +61,6 @@ export function getConfig(): AppConfig {
     welcomeCreditUsd: num(process.env.BEAMR_WELCOME_CREDIT_USD, 1),
     maxPaymentPerCallUsd: num(process.env.BEAMR_MAX_PAYMENT_PER_CALL_USD, 0.1),
     network: process.env.BEAMR_NETWORK || "base-sepolia",
-    facilitatorUrl:
-      process.env.X402_FACILITATOR_URL || "https://x402.org/facilitator",
     walletPrivateKey:
       pk && pk.startsWith("0x") ? (pk as Hex) : undefined,
     venice: {

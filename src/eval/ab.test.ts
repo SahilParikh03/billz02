@@ -19,7 +19,6 @@ const cfg: AppConfig = {
   sessionBudgetUsd: 1000, // large, so the harness never hits the cap
   maxPaymentPerCallUsd: 0.1,
   network: "base-sepolia",
-  facilitatorUrl: "https://x402.org/facilitator",
   venice: { baseUrl: "https://api.venice.ai/api/v1" },
   hyperbolic: { url: "https://hyperbolic-x402.vercel.app/v1/chat/completions" },
   routing: { difficultyThreshold: 0.5, latencyWeight: 0, qualityWeight: 0 },

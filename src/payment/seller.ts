@@ -1,11 +1,7 @@
-// x402 names this `useFacilitator`, but it is a plain factory (verify/settle),
-// not a React hook — alias it so the react-hooks lint rule doesn't misfire.
-import { useFacilitator as facilitatorClient } from "x402/verify";
 import { getDefaultAsset, safeBase64Decode } from "x402/shared";
 import {
   PaymentPayloadSchema,
   settleResponseHeader,
-  type FacilitatorConfig,
   type Network,
   type PaymentPayload,
   type PaymentRequirements,
@@ -13,21 +9,19 @@ import {
 } from "x402/types";
 import type { AppConfig } from "@/lib/types";
 import { resolveSell } from "@/lib/config";
-import { facilitatorChain } from "./facilitator";
+import { createLocalFacilitator, type LocalFacilitator } from "./localFacilitator";
 
 /**
- * Seller-side x402 primitives (Phase 1).
+ * Seller-side x402 primitives (Phase 1; Phase E settlement).
  *
- * The mirror of the buyer flow in `payment/wallet.ts` + `payment/facilitator.ts`:
- * here BEAMR is the *resource server*. It (1) advertises a price as
+ * Here BEAMR is the *resource server*. It (1) advertises a price as
  * `PaymentRequirements`, (2) verifies a buyer's signed `X-PAYMENT` header
- * against a facilitator *before* doing any work, and (3) settles the exact
- * amount *after* the work succeeds, emitting an `X-PAYMENT-RESPONSE` receipt.
+ * *before* doing any work, and (3) settles the exact amount *after* the work
+ * succeeds, emitting an `X-PAYMENT-RESPONSE` receipt.
  *
- * Verify and settle both run through `useFacilitator`, which delegates the
- * onchain work to the configured facilitator (CDP when creds are present, else
- * the public one) — reusing `facilitatorChain` for the same failover ordering
- * the buyer side already trusts.
+ * Verify and settle run through the in-process facilitator
+ * (`payment/localFacilitator.ts`), which does the EIP-3009 work directly with
+ * viem — no Coinbase / hosted facilitator is contacted (Phase E de-Coinbase).
  */
 
 const X402_VERSION = 1;
@@ -101,35 +95,29 @@ export interface VerifyOutcome {
   ok: boolean;
   payer?: string;
   /** The facilitator that accepted the payment — reuse it to settle. */
-  facilitator?: FacilitatorConfig;
+  facilitator?: LocalFacilitator;
   reason?: string;
 }
 
 /**
- * Verify a signed payment against the requirements. Walks `facilitatorChain`
- * and returns on the first facilitator that reports `isValid`; a facilitator
- * that throws is treated as a soft failure and the next one is tried.
- *
- * Verification does NOT move funds — it only checks the signature, amount,
- * recipient, and balance. Settlement is a separate, later step.
+ * Verify a signed payment against the requirements using the in-process
+ * facilitator. Verification does NOT move funds — it only checks the signature,
+ * amount, recipient, time window, and the on-chain balance/nonce. Settlement is
+ * a separate, later step that reuses the returned facilitator.
  */
 export async function verifyPayment(
   cfg: AppConfig,
   payload: PaymentPayload,
   reqs: PaymentRequirements,
 ): Promise<VerifyOutcome> {
-  let reason: string | undefined;
-  for (const facilitator of facilitatorChain(cfg)) {
-    try {
-      const { verify } = facilitatorClient(facilitator);
-      const res = await verify(payload, reqs);
-      if (res.isValid) return { ok: true, payer: res.payer, facilitator };
-      reason = res.invalidReason ?? "invalid_payment";
-    } catch {
-      reason = "facilitator_error";
-    }
+  const facilitator = createLocalFacilitator(cfg);
+  try {
+    const res = await facilitator.verify(payload, reqs);
+    if (res.isValid) return { ok: true, payer: res.payer, facilitator };
+    return { ok: false, reason: res.invalidReason ?? "invalid_payment" };
+  } catch {
+    return { ok: false, reason: "facilitator_error" };
   }
-  return { ok: false, reason };
 }
 
 // ── Settle (after work) ───────────────────────────────────────────────────────
@@ -152,13 +140,12 @@ export interface SettleOutcome {
  * is never charged for work they didn't receive.
  */
 export async function settlePayment(
-  facilitator: FacilitatorConfig,
+  facilitator: LocalFacilitator,
   payload: PaymentPayload,
   reqs: PaymentRequirements,
 ): Promise<SettleOutcome> {
   try {
-    const { settle } = facilitatorClient(facilitator);
-    const res = await settle(payload, reqs);
+    const res = await facilitator.settle(payload, reqs);
     if (res.success) {
       return {
         success: true,

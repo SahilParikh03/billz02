@@ -14,7 +14,7 @@
 import { getConfig, resolveSell } from "@/lib/config";
 import { newId } from "@/lib/ids";
 import type { AppConfig, ChatCompletionRequest } from "@/lib/types";
-import { isWalletUser } from "@/lib/credit";
+import { isCreditUser } from "@/lib/credit";
 import { executeChat } from "@/pipeline/execute";
 import { priceQuote } from "@/payment/quote";
 import {
@@ -24,7 +24,8 @@ import {
   settlePayment,
   verifyPayment,
 } from "@/payment/seller";
-import type { FacilitatorConfig, PaymentPayload, PaymentRequirements } from "x402/types";
+import type { PaymentPayload, PaymentRequirements } from "x402/types";
+import type { LocalFacilitator } from "@/payment/localFacilitator";
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream; charset=utf-8",
@@ -43,7 +44,7 @@ const BUDGET_ERRORS = new Set([
 interface SettleContext {
   payload: PaymentPayload;
   reqs: PaymentRequirements;
-  facilitator: FacilitatorConfig;
+  facilitator: LocalFacilitator;
 }
 
 /**
@@ -141,12 +142,13 @@ export async function POST(request: Request): Promise<Response> {
   const created = Math.floor(Date.now() / 1000);
 
   // ── Lane selection by caller identity ───────────────────────────────────────
-  // Signed-in wallet users pay from their prepaid credit balance: streaming is
-  // allowed and the cost-plus charge happens in the pipeline, so they bypass the
-  // x402 machine paywall (and its non-streaming-only guard). The pipeline still
-  // enforces a sufficient balance and returns 402 "top up" when short. Anonymous
-  // / agent callers go through the x402 preflight (no-op unless BEAMR_SELL_ENABLED).
-  const creditLane = isWalletUser(userId);
+  // Signed-in credit-bearing users (wallet or email) pay from their prepaid
+  // credit balance: streaming is allowed and the cost-plus charge happens in the
+  // pipeline, so they bypass the x402 machine paywall (and its non-streaming-only
+  // guard). The pipeline still enforces a sufficient balance and returns 402 "top
+  // up" when short. Anonymous / agent callers go through the x402 preflight (no-op
+  // unless BEAMR_SELL_ENABLED).
+  const creditLane = isCreditUser(userId);
   const gate = creditLane
     ? null
     : await preflightPaywall(cfg, body, request, sessionId);
