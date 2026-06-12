@@ -18,6 +18,19 @@ export type AccountStatus =
   | "otp-pending" // email submitted, awaiting the one-time code
   | "signed-in";
 
+/** Outcome of a credit top-up (the x402 pay → settle → credit round trip). */
+export interface TopUpResult {
+  ok: boolean;
+  /** USD added on success. */
+  credited?: number;
+  /** New credit balance on success. */
+  balance?: number;
+  /** Settlement tx hash, when the facilitator returns one. */
+  txHash?: string | null;
+  /** Human-readable failure reason when `ok` is false. */
+  error?: string;
+}
+
 export interface Account {
   /** True when CDP is configured (email signup is available). */
   enabled: boolean;
@@ -39,6 +52,12 @@ export interface Account {
   signOut: () => Promise<void>;
   /** Re-fetch the welcome-credit balance from the server. */
   refreshCredit: () => Promise<void>;
+  /**
+   * Add prepaid credit: pay `amountUsd` of USDC from the embedded wallet over
+   * x402 and credit the settled amount. Updates {@link credit} on success.
+   * No-op (returns an error result) when CDP is disabled or signed out.
+   */
+  topUp: (amountUsd: number) => Promise<TopUpResult>;
 }
 
 const noop = async () => {};
@@ -56,6 +75,7 @@ export const ANON_ACCOUNT: Account = {
   cancel: () => {},
   signOut: noop,
   refreshCredit: noop,
+  topUp: async () => ({ ok: false, error: "sign in to add credit" }),
 };
 
 export const AccountContext = createContext<Account>(ANON_ACCOUNT);

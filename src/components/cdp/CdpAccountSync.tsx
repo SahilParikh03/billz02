@@ -8,8 +8,11 @@ import {
   useSignInWithEmail,
   useVerifyEmailOTP,
   useSignOut,
+  useSignEvmTypedData,
 } from "@coinbase/cdp-hooks";
-import { AccountContext, type Account, type AccountStatus } from "./account";
+import { AccountContext, type Account, type AccountStatus, type TopUpResult } from "./account";
+import { runTopUp } from "./topUp";
+import type { SignEvmTypedData } from "@/payment/cdpSigner";
 
 /** Extract a human-ish message from an unknown thrown value. */
 function errMsg(e: unknown, fallback: string): string {
@@ -28,6 +31,7 @@ export function CdpAccountSync({ children }: { children: React.ReactNode }) {
   const { signInWithEmail } = useSignInWithEmail();
   const { verifyEmailOTP } = useVerifyEmailOTP();
   const { signOut } = useSignOut();
+  const { signEvmTypedData } = useSignEvmTypedData();
 
   const [flowId, setFlowId] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
@@ -109,6 +113,22 @@ export function CdpAccountSync({ children }: { children: React.ReactNode }) {
     [flowId, verifyEmailOTP],
   );
 
+  const topUp = useCallback(
+    async (amountUsd: number): Promise<TopUpResult> => {
+      if (!address) return { ok: false, error: "sign in to add credit" };
+      // The CDP hook's signEvmTypedData is structurally compatible with the
+      // adapter's signer; cast at this single SDK seam (branded EvmAddress/Hex).
+      const result = await runTopUp(
+        address,
+        signEvmTypedData as unknown as SignEvmTypedData,
+        amountUsd,
+      );
+      if (result.ok && typeof result.balance === "number") setCredit(result.balance);
+      return result;
+    },
+    [address, signEvmTypedData],
+  );
+
   const cancel = useCallback(() => {
     setFlowId(null);
     setError(null);
@@ -138,8 +158,9 @@ export function CdpAccountSync({ children }: { children: React.ReactNode }) {
       cancel,
       signOut: doSignOut,
       refreshCredit,
+      topUp,
     }),
-    [status, address, email, credit, error, signIn, verifyOtp, cancel, doSignOut, refreshCredit],
+    [status, address, email, credit, error, signIn, verifyOtp, cancel, doSignOut, refreshCredit, topUp],
   );
 
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
